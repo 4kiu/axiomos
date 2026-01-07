@@ -14,7 +14,6 @@ import {
   BrainCircuit, 
   Plus, 
   ShieldAlert, 
-  Zap, 
   BookOpen, 
   ChevronLeft, 
   ChevronRight, 
@@ -22,17 +21,13 @@ import {
   Calendar,
   Edit3,
   Download,
-  GitBranch,
-  ChevronDown,
-  GitFork,
-  Github
+  Github,
+  Zap
 } from 'lucide-react';
 import { format, addWeeks, addDays, isSameDay } from 'date-fns';
 
 const STORAGE_KEY = 'axiom_os_data_v1';
 const PLANS_STORAGE_KEY = 'axiom_os_plans_v1';
-const ACTIVE_BRANCH_KEY = 'axiom_os_active_branch';
-const BRANCHES_KEY = 'axiom_os_branches';
 
 const AxiomLogo = ({ className = "w-8 h-8" }: { className?: string }) => (
   <svg 
@@ -76,10 +71,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<'current' | 'history' | 'discovery' | 'plans'>('current');
   const [entries, setEntries] = useState<WorkoutEntry[]>([]);
   const [plans, setPlans] = useState<WorkoutPlan[]>([]);
-  const [activeBranch, setActiveBranch] = useState<string>('main');
-  const [branches, setBranches] = useState<string[]>(['main']);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
   const [dashboardWeekOffset, setDashboardWeekOffset] = useState(0);
   const [preselectedLogData, setPreselectedLogData] = useState<{ date?: Date, identity?: IdentityState, editingEntry?: WorkoutEntry } | null>(null);
   
@@ -123,27 +115,19 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedEntries = localStorage.getItem(STORAGE_KEY);
     const savedPlans = localStorage.getItem(PLANS_STORAGE_KEY);
-    const savedBranch = localStorage.getItem(ACTIVE_BRANCH_KEY);
-    const savedBranches = localStorage.getItem(BRANCHES_KEY);
     
     if (savedEntries) try { setEntries(JSON.parse(savedEntries)); } catch (e) {}
     if (savedPlans) try { setPlans(JSON.parse(savedPlans)); } catch (e) {}
-    if (savedBranch) setActiveBranch(savedBranch);
-    if (savedBranches) setBranches(JSON.parse(savedBranches));
   }, []);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }, [entries]);
   useEffect(() => { localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans)); }, [plans]);
-  useEffect(() => { localStorage.setItem(ACTIVE_BRANCH_KEY, activeBranch); }, [activeBranch]);
-  useEffect(() => { localStorage.setItem(BRANCHES_KEY, JSON.stringify(branches)); }, [branches]);
 
-  const filteredEntries = entries.filter(e => e.branch === activeBranch);
-
-  const addOrUpdateEntry = (entryData: Omit<WorkoutEntry, 'id' | 'branch'>, id?: string) => {
+  const addOrUpdateEntry = (entryData: Omit<WorkoutEntry, 'id'>, id?: string) => {
     if (id) {
-      setEntries(prev => prev.map(e => e.id === id ? { ...entryData, id, branch: e.branch } : e));
+      setEntries(prev => prev.map(e => e.id === id ? { ...entryData, id } : e));
     } else {
-      const newEntry: WorkoutEntry = { ...entryData, id: crypto.randomUUID(), branch: activeBranch };
+      const newEntry: WorkoutEntry = { ...entryData, id: crypto.randomUUID() };
       setEntries(prev => [...prev, newEntry]);
     }
     setIsLogModalOpen(false);
@@ -157,15 +141,6 @@ const App: React.FC = () => {
   };
 
   const handleUpdatePlans = (newPlans: WorkoutPlan[]) => { setPlans(newPlans); };
-
-  const createNewBranch = () => {
-    const name = prompt("Enter Branch Identifier:");
-    if (name && !branches.includes(name)) {
-      setBranches(prev => [...prev, name]);
-      setActiveBranch(name);
-      setIsBranchMenuOpen(false);
-    }
-  };
 
   const handleCellClick = (date: Date, identity: IdentityState) => {
     setPreselectedLogData({ date, identity });
@@ -186,7 +161,7 @@ const App: React.FC = () => {
   };
 
   const dashboardWeekStart = startOfWeek(addWeeks(new Date(), dashboardWeekOffset), { weekStartsOn: 0 });
-  const todayEntry = filteredEntries.find(e => isSameDay(new Date(e.timestamp), new Date()));
+  const todayEntry = entries.find(e => isSameDay(new Date(e.timestamp), new Date()));
   const todayHasEntry = !!todayEntry;
 
   const NavItems = () => (
@@ -201,47 +176,27 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-neutral-200 flex flex-col font-sans pb-20 sm:pb-0">
       <header className="border-b border-neutral-800 p-4 sticky top-0 bg-[#0a0a0a]/80 backdrop-blur-md z-30">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-0">
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-            <div className="flex items-center gap-3">
-              <AxiomLogo className="w-9 h-9 sm:w-8 sm:h-8" />
-              <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
-                <h1 className="text-xl sm:text-lg font-mono font-bold tracking-tight uppercase leading-none">Axiom v1.6</h1>
-                <span className="text-[10px] text-neutral-500 font-mono hidden sm:inline uppercase">Personal Intelligence OS</span>
-              </div>
-            </div>
-            <div className="relative">
-              <button onClick={() => setIsBranchMenuOpen(!isBranchMenuOpen)} className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/50 border border-neutral-800 rounded-lg hover:border-neutral-700 transition-colors">
-                <GitBranch size={14} className="text-violet-500" />
-                <span className="text-[11px] font-mono text-neutral-300 uppercase tracking-tighter">[ BR: <span className="text-white font-bold">{activeBranch}</span> ]</span>
-                <ChevronDown size={12} className={`text-neutral-500 transition-transform ${isBranchMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {isBranchMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setIsBranchMenuOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-3 py-2 text-[10px] font-mono text-neutral-500 uppercase tracking-widest border-b border-neutral-800 mb-2">Timeline Branches</div>
-                    <div className="max-h-64 overflow-y-auto space-y-1">
-                      {branches.map(b => (
-                        <button key={b} onClick={() => { setActiveBranch(b); setIsBranchMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono transition-colors flex items-center justify-between ${activeBranch === b ? 'bg-violet-600 text-white' : 'hover:bg-neutral-800 text-neutral-400'}`}>
-                          <span>{b}</span> {activeBranch === b && <Zap size={10} />}
-                        </button>
-                      ))}
-                    </div>
-                    <button onClick={createNewBranch} className="w-full mt-2 flex items-center gap-2 px-3 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-[10px] font-mono uppercase font-bold transition-all"><GitFork size={12} /> Initialize New Branch</button>
-                  </div>
-                </>
-              )}
+        <div className="max-w-7xl mx-auto flex flex-row justify-between items-center">
+          <div className="flex items-center gap-3">
+            <AxiomLogo className="w-8 h-8" />
+            <div className="flex flex-col">
+              <h1 className="text-lg font-mono font-bold tracking-tight uppercase leading-none">Axiom v1.6</h1>
+              <span className="text-[9px] text-neutral-500 font-mono hidden sm:inline uppercase">Personal Intelligence OS</span>
+              <span className="text-[9px] text-neutral-500 font-mono sm:hidden uppercase tracking-tighter">OS_CORE</span>
             </div>
           </div>
           <nav className="hidden sm:flex items-center gap-2 bg-neutral-900 p-1.5 rounded-xl border border-neutral-800"><NavItems /></nav>
+          <div className="sm:hidden flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[9px] font-mono text-neutral-600 uppercase tracking-tighter">Link_Up</span>
+          </div>
         </div>
       </header>
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6 space-y-8">
         {view === 'current' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-stretch">
-              <div className="lg:col-span-3 h-full"><WeeklyGrid entries={filteredEntries} plans={plans} onEntryClick={handleEditEntry} onCellClick={handleCellClick} weekStart={dashboardWeekStart} /></div>
+              <div className="lg:col-span-3 h-full"><WeeklyGrid entries={entries} plans={plans} onEntryClick={handleEditEntry} onCellClick={handleCellClick} weekStart={dashboardWeekStart} /></div>
               <div className="hidden lg:block h-full">
                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 h-full flex flex-col">
                     <h3 className="text-xs font-mono text-neutral-500 uppercase tracking-widest mb-4">Identity Matrix</h3>
@@ -274,14 +229,14 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <StatusPanel entries={filteredEntries} onAction={() => setIsLogModalOpen(true)} />
-              <PointsCard entries={filteredEntries} weekStart={dashboardWeekStart} />
+              <StatusPanel entries={entries} onAction={() => setIsLogModalOpen(true)} />
+              <PointsCard entries={entries} weekStart={dashboardWeekStart} />
               <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-6 flex flex-col justify-between">
                 <div>
                   <h3 className="text-sm font-mono text-neutral-500 uppercase tracking-widest mb-2">System Rules</h3>
                   <ul className="text-xs space-y-3 text-neutral-400">
-                    <li className="flex gap-2"><ShieldAlert size={14} className="text-rose-500 shrink-0" /><span>1 entry per day to ensure mapping fidelity.</span></li>
-                    <li className="flex gap-2"><Zap size={14} className="text-violet-500 shrink-0" /><span>Branch: <span className="text-violet-400 font-bold uppercase">{activeBranch}</span></span></li>
+                    <li className="flex gap-2"><ShieldAlert size={14} className="text-rose-500 shrink-0" /><span>Logging is restricted to 1 entry per day to ensure mapping fidelity.</span></li>
+                    <li className="flex gap-2"><Zap size={14} className="text-violet-500 shrink-0" /><span>Overdrive cannot be selected on consecutive days. Recovery is mandatory.</span></li>
                   </ul>
                 </div>
                 <button onClick={() => todayHasEntry ? handleEditEntry(todayEntry!.id) : setIsLogModalOpen(true)} className="mt-6 w-full py-3 bg-neutral-100 hover:bg-white text-black font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
@@ -293,15 +248,15 @@ const App: React.FC = () => {
           </div>
         )}
         {view === 'plans' && <PlanBuilder plans={plans} onUpdatePlans={handleUpdatePlans} />}
-        {view === 'history' && <History entries={filteredEntries} plans={plans} onEditEntry={handleEditEntry} />}
-        {view === 'discovery' && <DiscoveryPanel entries={filteredEntries} />}
+        {view === 'history' && <History entries={entries} plans={plans} onEditEntry={handleEditEntry} />}
+        {view === 'discovery' && <DiscoveryPanel entries={entries} />}
       </main>
       <nav className={`sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-neutral-800 px-6 py-4 flex justify-between items-center transition-transform duration-300 ease-in-out ${isNavVisible ? 'translate-y-0' : 'translate-y-full'}`}><NavItems /></nav>
       {isLogModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={handleCloseModal} />
           <div className="relative bg-[#0d0d0d] border border-neutral-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
-            <LogAction entries={filteredEntries} plans={plans} onSave={addOrUpdateEntry} onDelete={deleteEntry} onCancel={handleCloseModal} initialDate={preselectedLogData?.date} initialIdentity={preselectedLogData?.identity} editingEntry={preselectedLogData?.editingEntry} />
+            <LogAction entries={entries} plans={plans} onSave={addOrUpdateEntry} onDelete={deleteEntry} onCancel={handleCloseModal} initialDate={preselectedLogData?.date} initialIdentity={preselectedLogData?.identity} editingEntry={preselectedLogData?.editingEntry} />
           </div>
         </div>
       )}

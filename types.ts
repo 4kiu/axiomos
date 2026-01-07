@@ -36,7 +36,6 @@ export interface WorkoutEntry {
   notes?: string;
   tags: ContextTag[];
   planId?: string; // Reference to a WorkoutPlan
-  branch: string; // The timeline this entry belongs to
 }
 
 export interface AppState {

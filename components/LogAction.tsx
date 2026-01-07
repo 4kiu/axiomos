@@ -32,7 +32,7 @@ const subDays = (date: Date | number, amount: number) => {
 interface LogActionProps {
   entries: WorkoutEntry[];
   plans: WorkoutPlan[];
-  onSave: (entry: Omit<WorkoutEntry, 'id' | 'branch'>, id?: string) => void;
+  onSave: (entry: Omit<WorkoutEntry, 'id'>, id?: string) => void;
   onDelete?: (id: string) => void;
   onCancel: () => void;
   initialDate?: Date;
