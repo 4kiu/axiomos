@@ -14,7 +14,8 @@ import {
   DownloadCloud, 
   RefreshCw,
   Link,
-  Info
+  Info,
+  AlertTriangle
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -22,13 +23,12 @@ import { format } from 'date-fns';
 declare var process: {
   env: {
     API_KEY: string;
+    GOOGLE_CLIENT_ID: string;
     [key: string]: string | undefined;
   };
 };
 
 declare const google: any;
-
-const GOOGLE_CLIENT_ID = "616049430156-f63v84313t12t84313t12t.apps.googleusercontent.com";
 
 interface DiscoveryPanelProps {
   entries: WorkoutEntry[];
@@ -48,30 +48,48 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'loading' | 'success' | 'error'>('idle');
   const [customSyncName, setCustomSyncName] = useState(() => `sync.${format(new Date(), 'ss.mm.HH.dd.MM.yyyy')}`);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     setCustomSyncName(`sync.${format(new Date(), 'ss.mm.HH.dd.MM.yyyy')}`);
   }, []);
 
   const loginWithGoogle = () => {
+    setAuthError(null);
     try {
-      if (typeof google !== 'undefined') {
+      if (typeof google !== 'undefined' && google.accounts?.oauth2) {
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        
+        if (!clientId || clientId.includes("placeholder")) {
+          setAuthError("Configuration Missing: GOOGLE_CLIENT_ID environment variable is not set.");
+          return;
+        }
+
         const client = google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
+          client_id: clientId,
           scope: 'https://www.googleapis.com/auth/drive.file',
           callback: (response: any) => {
             if (response.access_token) {
               setAccessToken(response.access_token);
               setSyncStatus('success');
+              setAuthError(null);
+            } else if (response.error) {
+              setAuthError(`Auth Error: ${response.error_description || response.error}`);
+              setSyncStatus('error');
             }
           },
+          error_callback: (err: any) => {
+            setAuthError(`OAuth Client Error: ${err.message || 'Check your Client ID and Authorized Origins'}`);
+            setSyncStatus('error');
+          }
         });
         client.requestAccessToken();
       } else {
-        alert("Cloud provider (GSI) not loaded. Please check connectivity.");
+        setAuthError("GSI library not initialized. Verify internet connectivity.");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("GSI Init Error:", e);
+      setAuthError(`System Error: ${e.message || 'Unknown initialization failure'}`);
       setSyncStatus('error');
     }
   };
@@ -82,7 +100,7 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
     
     try {
       const manifest = {
-        version: '1.6',
+        version: '1.7',
         timestamp: Date.now(),
         data: { entries, plans }
       };
@@ -107,10 +125,12 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
         setSyncStatus('success');
         setTimeout(() => setSyncStatus('idle'), 3000);
       } else {
-        throw new Error('Upload failed');
+        const errData = await response.json();
+        throw new Error(errData.error?.message || 'Upload failed');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setAuthError(`Sync Failure: ${e.message}`);
       setSyncStatus('error');
     }
   };
@@ -136,15 +156,15 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
           onUpdateEntries(manifest.data.entries || []);
           onUpdatePlans(manifest.data.plans || []);
           setSyncStatus('success');
-          alert(`Neural Link Restored: ${listData.files[0].name}`);
           setTimeout(() => setSyncStatus('idle'), 3000);
         }
       } else {
-        alert("No cloud manifests detected.");
+        setAuthError("No cloud manifests detected in primary drive.");
         setSyncStatus('idle');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setAuthError(`Load Failure: ${e.message}`);
       setSyncStatus('error');
     }
   };
@@ -237,14 +257,6 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
             </div>
           </div>
 
-          <div className="bg-violet-900/10 border border-violet-800/30 rounded-xl p-5 shadow-xl">
-             <div className="flex items-center gap-2 mb-2">
-                <RefreshCw size={12} className="text-violet-400" />
-                <span className="text-[10px] font-mono text-violet-400 uppercase font-bold">Auto-link</span>
-             </div>
-             <p className="text-[10px] text-neutral-400">Drive sync ensures your identity matrix follows you across terminals.</p>
-          </div>
-
           <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 relative group overflow-hidden shadow-xl">
             <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500/50 group-hover:bg-emerald-500 transition-all" />
             
@@ -266,8 +278,24 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
             </div>
 
             <div className="space-y-4">
+                {authError && (
+                  <div className="bg-rose-500/10 border border-rose-500/30 p-3 rounded-lg flex gap-2 items-start animate-in fade-in slide-in-from-top-1">
+                    <AlertTriangle size={14} className="text-rose-500 shrink-0 mt-0.5" />
+                    <div className="text-[10px] text-rose-300 leading-tight">
+                      <span className="font-bold uppercase block mb-1">Authorization Failed</span>
+                      {authError}
+                      <div className="mt-2 pt-2 border-t border-rose-500/20 text-[9px] opacity-70">
+                        Ensure your origin URL is whitelisted in Google Console.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                    <label className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest block">Manifest Pattern</label>
+                    <label className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest block flex items-center justify-between">
+                        Manifest Pattern
+                        <Info size={10} className="text-neutral-700 cursor-help" title="Identifies the sync file on Drive" />
+                    </label>
                     <div className="flex bg-black/40 border border-neutral-800 rounded-lg p-2 items-center gap-2">
                         <RefreshCw size={12} className={`text-neutral-500 ${syncStatus === 'syncing' ? 'animate-spin text-emerald-500' : ''}`} />
                         <input 
@@ -298,6 +326,17 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
                     </button>
                 </div>
             </div>
+          </div>
+
+          <div className="bg-violet-900/10 border border-violet-800/30 rounded-xl p-5 shadow-xl">
+             <div className="flex items-center gap-2 mb-2">
+                <Info size={12} className="text-violet-400" />
+                <span className="text-[10px] font-mono text-violet-400 uppercase font-bold">Setup Required</span>
+             </div>
+             <p className="text-[10px] text-neutral-400 leading-relaxed">
+               OAuth requires a valid <strong>GOOGLE_CLIENT_ID</strong> in your environment. 
+               Your current origin must also be added to <span className="text-violet-300">Authorized JavaScript Origins</span> in the Cloud Console.
+             </p>
           </div>
         </div>
       </div>
