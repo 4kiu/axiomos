@@ -1,0 +1,18 @@
+
+{
+  "name": "Axiom Training Systems",
+  "short_name": "Axiom",
+  "description": "High-performance training operating system for identity mapping.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2592/2592201.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
