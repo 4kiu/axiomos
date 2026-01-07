@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { WorkoutEntry, WorkoutPlan } from '../types.ts';
 import { format, addDays } from 'date-fns';
@@ -6,7 +5,6 @@ import WeeklyGrid from './WeeklyGrid.tsx';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 
 // Fix: Local implementation of startOfWeek as it was missing from date-fns export
-// Changed weekStartsOn default to 0 (Sunday)
 const startOfWeek = (date: Date | number, options?: { weekStartsOn?: number }) => {
   const d = new Date(date);
   const day = d.getDay();
@@ -75,6 +73,7 @@ const History: React.FC<HistoryProps> = ({ entries, plans, onEditEntry }) => {
           plans={plans}
           weekStart={selectedWeekStart} 
           onEntryClick={onEditEntry}
+          isCompact={false} // Full table view for History
         />
       </div>
 

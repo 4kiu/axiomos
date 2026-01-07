@@ -158,7 +158,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <AxiomLogo className="w-8 h-8" />
             <div className="flex flex-col">
-              <h1 className="text-lg font-mono font-bold tracking-tight uppercase leading-none">Axiom v1.7</h1>
+              <h1 className="text-lg font-mono font-bold tracking-tight uppercase leading-none">Axiom v1.6</h1>
               <span className="text-[9px] text-neutral-500 font-mono hidden sm:inline uppercase">Personal Intelligence OS</span>
               <span className="text-[9px] text-neutral-500 font-mono sm:hidden uppercase tracking-tighter">OS_CORE</span>
             </div>
@@ -174,7 +174,7 @@ const App: React.FC = () => {
         {view === 'current' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-stretch">
-              <div className="lg:col-span-3 h-full"><WeeklyGrid entries={entries} plans={plans} onEntryClick={handleEditEntry} onCellClick={handleCellClick} weekStart={dashboardWeekStart} /></div>
+              <div className="lg:col-span-3 h-full"><WeeklyGrid isCompact={true} entries={entries} plans={plans} onEntryClick={handleEditEntry} onCellClick={handleCellClick} weekStart={dashboardWeekStart} /></div>
               <div className="hidden lg:block h-full">
                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 h-full flex flex-col">
                     <h3 className="text-xs font-mono text-neutral-500 uppercase tracking-widest mb-4">Identity Matrix</h3>

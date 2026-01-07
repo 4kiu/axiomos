@@ -88,6 +88,7 @@ const LogAction: React.FC<LogActionProps> = ({
   }, [entries]);
 
   const isOverdriveLocked = !loggedToday || loggedOverdriveYesterday;
+  const isRestSelected = selectedIdentity === IdentityState.REST;
 
   const dateCollision = useMemo(() => {
     const selectedDate = new Date(sessionTime);
@@ -111,7 +112,7 @@ const LogAction: React.FC<LogActionProps> = ({
       energy,
       notes,
       tags: selectedTags,
-      planId: selectedPlanId
+      planId: isRestSelected ? undefined : selectedPlanId
     }, editingEntry?.id);
   };
 
@@ -132,7 +133,12 @@ const LogAction: React.FC<LogActionProps> = ({
       <button
         key={id}
         disabled={isDisabled}
-        onClick={() => setSelectedIdentity(id)}
+        onClick={() => {
+          setSelectedIdentity(id);
+          if (id === IdentityState.REST) {
+            setSelectedPlanId(undefined);
+          }
+        }}
         className={`relative flex flex-col p-4 rounded-xl border text-left transition-all overflow-hidden
           ${isDisabled ? 'opacity-40 grayscale cursor-not-allowed border-neutral-800' : 
             isSelected ? `${meta.borderColor} ${meta.color} shadow-lg shadow-${meta.color.split('-')[1]}/20 scale-[1.02]` : 
@@ -213,8 +219,11 @@ const LogAction: React.FC<LogActionProps> = ({
           </div>
         </section>
 
-        <section>
-          <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block mb-3">System Blueprint</label>
+        <section className={isRestSelected ? "opacity-40 pointer-events-none select-none" : ""}>
+          <div className="flex justify-between items-center mb-3">
+            <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block">System Blueprint</label>
+            {isRestSelected && <span className="text-[8px] font-mono text-rose-500 uppercase font-bold">Locked: Rest State Active</span>}
+          </div>
           {plans.length > 0 ? (
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-1 gap-2">
