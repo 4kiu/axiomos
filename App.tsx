@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { IdentityState, WorkoutEntry, IDENTITY_METADATA, WorkoutPlan } from './types.ts';
 import WeeklyGrid from './components/WeeklyGrid.tsx';
@@ -158,7 +159,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <AxiomLogo className="w-8 h-8" />
             <div className="flex flex-col">
-              <h1 className="text-lg font-mono font-bold tracking-tight uppercase leading-none">Axiom v1.6</h1>
+              <h1 className="text-lg font-mono font-bold tracking-tight uppercase leading-none">Axiom v1.7</h1>
               <span className="text-[9px] text-neutral-500 font-mono hidden sm:inline uppercase">Personal Intelligence OS</span>
               <span className="text-[9px] text-neutral-500 font-mono sm:hidden uppercase tracking-tighter">OS_CORE</span>
             </div>
@@ -209,7 +210,7 @@ const App: React.FC = () => {
                   <h3 className="text-sm font-mono text-neutral-500 uppercase tracking-widest mb-2">System Rules</h3>
                   <ul className="text-xs space-y-3 text-neutral-400">
                     <li className="flex gap-2"><ShieldAlert size={14} className="text-rose-500 shrink-0" /><span>Logging is restricted to 1 entry per day to ensure mapping fidelity.</span></li>
-                    <li className="flex gap-2"><Zap size={14} className="text-violet-500 shrink-0" /><span>Performance streaks are sustained by Normal/Overdrive. Maintenance/Rest/Survival break the streak.</span></li>
+                    <li className="flex gap-2"><Zap size={14} className="text-violet-500 shrink-0" /><span>Streaks are sustained by any logged activity. Rest bridges the gap, while missing logs or Survival reset it.</span></li>
                   </ul>
                 </div>
                 <button onClick={() => todayHasEntry ? handleEditEntry(todayEntry!.id) : setIsLogModalOpen(true)} className="mt-6 w-full py-3 bg-neutral-100 hover:bg-white text-black font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
@@ -235,17 +236,17 @@ const App: React.FC = () => {
       {isLogModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={handleCloseModal} />
-          <div className="relative bg-[#0d0d0d] border border-neutral-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+          <div className="relative bg-[#0d0d0d]/70 backdrop-blur-xl border border-neutral-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <LogAction entries={entries} plans={plans} onSave={addOrUpdateEntry} onDelete={deleteEntry} onCancel={handleCloseModal} initialDate={preselectedLogData?.date} initialIdentity={preselectedLogData?.identity} editingEntry={preselectedLogData?.editingEntry} />
           </div>
         </div>
       )}
       <footer className="hidden sm:flex border-t border-neutral-800 p-2 text-[10px] font-mono text-neutral-600 justify-between bg-black">
         <div className="flex gap-4">
-          <span>&copy; 2024 Axiom</span>
+          <span>&copy; 2026 Axiom</span>
           <a href="https://github.com/4kiu/axiom" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors"><Github size={12} /> Source Access</a>
         </div>
-        <div className="flex gap-4"><span>IDENTITY_STABLE: OK</span><span>SYSTEM_VERSION: ALPHA</span></div>
+        <div className="flex gap-4"><span>IDENTITY_STABLE: OK</span><span>SYSTEM_VERSION: ALPHA_v1.7</span></div>
       </footer>
     </div>
   );

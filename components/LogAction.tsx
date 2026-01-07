@@ -12,7 +12,6 @@ import {
   Activity, 
   Shield, 
   Calendar,
-  Lock,
   ChevronRight,
   Trash2,
   AlertCircle,
@@ -24,7 +23,7 @@ import {
 import { isSameDay, format } from 'date-fns';
 import { MuscleIcon } from './PlanBuilder.tsx';
 
-// Fix: Local implementation of subDays as it was missing from date-fns export
+// Local implementation of subDays as it was missing from date-fns export
 const subDays = (date: Date | number, amount: number) => {
   const d = new Date(date);
   d.setDate(d.getDate() - amount);
@@ -75,19 +74,6 @@ const LogAction: React.FC<LogActionProps> = ({
   const [sessionTime, setSessionTime] = useState(getInitialTime());
   const tags: ContextTag[] = ['energized', 'normal', 'tired', 'exams', 'stress', 'injured'];
 
-  const loggedToday = useMemo(() => {
-    return entries.some(e => isSameDay(new Date(e.timestamp), new Date()));
-  }, [entries]);
-
-  const loggedOverdriveYesterday = useMemo(() => {
-    const yesterday = subDays(new Date(), 1);
-    return entries.some(e => 
-      e.identity === IdentityState.OVERDRIVE && 
-      isSameDay(new Date(e.timestamp), yesterday)
-    );
-  }, [entries]);
-
-  const isOverdriveLocked = !loggedToday || loggedOverdriveYesterday;
   const isRestSelected = selectedIdentity === IdentityState.REST;
 
   const dateCollision = useMemo(() => {
@@ -125,14 +111,11 @@ const LogAction: React.FC<LogActionProps> = ({
 
   const renderIdentityButton = (id: IdentityState) => {
     const meta = IDENTITY_METADATA[id];
-    const isOverdrive = id === IdentityState.OVERDRIVE;
-    const isDisabled = isOverdrive && isOverdriveLocked && editingEntry?.identity !== IdentityState.OVERDRIVE;
     const isSelected = selectedIdentity === id;
 
     return (
       <button
         key={id}
-        disabled={isDisabled}
         onClick={() => {
           setSelectedIdentity(id);
           if (id === IdentityState.REST) {
@@ -140,9 +123,8 @@ const LogAction: React.FC<LogActionProps> = ({
           }
         }}
         className={`relative flex flex-col p-4 rounded-xl border text-left transition-all overflow-hidden
-          ${isDisabled ? 'opacity-40 grayscale cursor-not-allowed border-neutral-800' : 
-            isSelected ? `${meta.borderColor} ${meta.color} shadow-lg shadow-${meta.color.split('-')[1]}/20 scale-[1.02]` : 
-            'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
+          ${isSelected ? `${meta.borderColor} ${meta.color} shadow-lg shadow-${meta.color.split('-')[1]}/20 scale-[1.02]` : 
+            'bg-white/5 border-neutral-800 hover:border-neutral-700'
           }
         `}
       >
@@ -150,7 +132,6 @@ const LogAction: React.FC<LogActionProps> = ({
           <span className={`text-[10px] font-mono font-bold uppercase ${isSelected ? 'text-white' : 'text-neutral-500'}`}>
             ID-0{id}
           </span>
-          {isOverdrive && isDisabled && <Lock size={12} className="text-neutral-600" />}
           {isSelected && <ChevronRight size={14} className="text-white" />}
         </div>
         <div className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-neutral-200'}`}>
@@ -165,7 +146,7 @@ const LogAction: React.FC<LogActionProps> = ({
 
   return (
     <div className="flex flex-col h-full max-h-[90vh]">
-      <div className={`flex justify-between items-center p-6 border-b border-neutral-800 transition-colors ${editingEntry ? 'bg-amber-500/5' : 'bg-transparent'}`}>
+      <div className={`flex justify-between items-center p-6 border-b border-neutral-800/50 transition-colors ${editingEntry ? 'bg-amber-500/5' : 'bg-transparent'}`}>
         <div className="flex items-center gap-4">
           <div className={`p-2 rounded-xl border ${editingEntry ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
             {editingEntry ? <Edit3 size={20} /> : <Activity size={20} />}
@@ -188,7 +169,7 @@ const LogAction: React.FC<LogActionProps> = ({
               <Trash2 size={18} className="text-neutral-600 group-hover:text-rose-500" />
             </button>
           )}
-          <button onClick={onCancel} className="p-2 hover:bg-neutral-800 rounded-full transition-colors">
+          <button onClick={onCancel} className="p-2 hover:bg-white/10 rounded-full transition-colors">
             <X size={20} className="text-neutral-400" />
           </button>
         </div>
@@ -214,7 +195,7 @@ const LogAction: React.FC<LogActionProps> = ({
               type="datetime-local" 
               value={sessionTime}
               onChange={(e) => setSessionTime(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl py-3 pl-10 pr-4 text-sm text-neutral-200 focus:outline-none focus:border-neutral-600 transition-colors font-mono"
+              className="w-full bg-white/5 border border-neutral-800 rounded-xl py-3 pl-10 pr-4 text-sm text-neutral-200 focus:outline-none focus:border-neutral-600 transition-colors font-mono"
             />
           </div>
         </section>
@@ -236,7 +217,7 @@ const LogAction: React.FC<LogActionProps> = ({
                       className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all
                         ${selectedPlanId === plan.id 
                           ? 'bg-neutral-100 border-neutral-100 text-black' 
-                          : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-700'
+                          : 'bg-white/5 border-neutral-800 text-neutral-400 hover:border-neutral-700'
                         }
                       `}
                     >
@@ -301,7 +282,7 @@ const LogAction: React.FC<LogActionProps> = ({
                 className={`px-3 py-1.5 rounded-full text-[11px] font-mono border transition-all uppercase
                   ${selectedTags.includes(tag) 
                     ? 'bg-neutral-100 border-neutral-100 text-black' 
-                    : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-600'
+                    : 'bg-white/5 border-neutral-800 text-neutral-400 hover:border-neutral-600'
                   }
                 `}
               >
@@ -314,7 +295,7 @@ const LogAction: React.FC<LogActionProps> = ({
         <section>
           <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block mb-3">Notes / Logs</label>
           <textarea 
-            className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-sm text-neutral-200 focus:outline-none focus:border-neutral-600 min-h-[100px] placeholder-neutral-700 font-sans"
+            className="w-full bg-white/5 border border-neutral-800 rounded-xl p-4 text-sm text-neutral-200 focus:outline-none focus:border-neutral-600 min-h-[100px] placeholder-neutral-700 font-sans"
             placeholder="Document technical patterns or fatigue specifics..."
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -322,7 +303,7 @@ const LogAction: React.FC<LogActionProps> = ({
         </section>
       </div>
 
-      <div className="p-6 border-t border-neutral-800 bg-neutral-900/50">
+      <div className="p-6 border-t border-neutral-800/50 bg-black/40">
         <button
           onClick={handleSave}
           disabled={selectedIdentity === null || dateCollision}

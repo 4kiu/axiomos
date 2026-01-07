@@ -49,7 +49,7 @@ export const IDENTITY_METADATA = {
     color: 'bg-violet-600',
     borderColor: 'border-violet-500',
     textColor: 'text-violet-100',
-    description: 'Peak state. Sustains normal streaks without resetting them.',
+    description: 'Peak state. Increments the Training Streak.',
     duration: '120m+'
   },
   [IdentityState.NORMAL]: {
@@ -57,7 +57,7 @@ export const IDENTITY_METADATA = {
     color: 'bg-emerald-600',
     borderColor: 'border-emerald-500',
     textColor: 'text-emerald-100',
-    description: 'Standard volume. The primary driver for performance streaks.',
+    description: 'Standard volume. Increments the Training Streak.',
     duration: '80-120m'
   },
   [IdentityState.MAINTENANCE]: {
@@ -65,7 +65,7 @@ export const IDENTITY_METADATA = {
     color: 'bg-amber-600',
     borderColor: 'border-amber-500',
     textColor: 'text-amber-100',
-    description: 'Preserving baseline. Breaks performance streaks.',
+    description: 'Preserving baseline. Increments the Training Streak.',
     duration: '40-80m'
   },
   [IdentityState.SURVIVAL]: {
@@ -73,7 +73,7 @@ export const IDENTITY_METADATA = {
     color: 'bg-rose-600',
     borderColor: 'border-rose-500',
     textColor: 'text-rose-100',
-    description: 'Minimum dose. Breaks performance streaks.',
+    description: 'Minimum dose. Resets/breaks Training Streaks.',
     duration: '20-40m'
   },
   [IdentityState.REST]: {
@@ -81,7 +81,7 @@ export const IDENTITY_METADATA = {
     color: 'bg-neutral-600',
     borderColor: 'border-neutral-500',
     textColor: 'text-neutral-100',
-    description: 'Strategic recovery. Breaks performance streaks.',
+    description: 'Strategic recovery. Bridges the streak without incrementing.',
     duration: '0m'
   }
 };

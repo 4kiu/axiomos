@@ -7,7 +7,7 @@ import {
   isToday
 } from 'date-fns';
 import { IdentityState, WorkoutEntry, IDENTITY_METADATA, WorkoutPlan } from '../types.ts';
-import { Plus, Sparkles } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 const startOfDay = (date: Date | number) => {
   const d = new Date(date);
@@ -15,7 +15,6 @@ const startOfDay = (date: Date | number) => {
   return d;
 };
 
-// Fix: Corrected invalid syntax where type annotation was placed in runtime code on line 20.
 const startOfWeek = (date: Date | number, options?: { weekStartsOn?: number }) => {
   const d = new Date(date);
   const day = d.getDay();
@@ -71,34 +70,39 @@ const WeeklyGrid: React.FC<WeeklyGridProps> = ({
   const EntryCard = ({ entry }: { entry: WorkoutEntry }) => {
     const meta = IDENTITY_METADATA[entry.identity];
     const isOverdrive = entry.identity === IdentityState.OVERDRIVE;
-    const animationClass = isOverdrive ? 'animate-[pulse-overdrive_2s_infinite_ease-in-out]' : '';
+    const animationClass = isOverdrive ? 'animate-[pulse-overdrive_3s_infinite_ease-in-out]' : '';
     const plan = entry.planId ? plans.find(p => p.id === entry.planId) : null;
+    
+    // Generate a pseudo-random delay based on the entry ID to desynchronize pulses
+    const delayValue = isOverdrive 
+      ? `-${(parseInt(entry.id.substring(0, 4), 16) % 3000) / 1000}s` 
+      : '0s';
     
     return (
       <div 
         onClick={(e) => { e.stopPropagation(); onEntryClick?.(entry.id); }} 
+        style={{ 
+          animationDelay: delayValue,
+          willChange: isOverdrive ? 'transform, box-shadow, background-color' : 'auto'
+        }}
         className={`group/entry relative p-2 rounded-lg border transition-all h-full flex flex-col items-center justify-center
           ${meta.color} ${meta.borderColor} ${meta.textColor}
           ${animationClass}
-          hover:brightness-110 active:scale-[0.98] shadow-md min-h-[58px] sm:min-h-[85px]
+          hover:brightness-125 active:scale-[0.98] shadow-md min-h-[58px] sm:min-h-[85px]
         `}
       >
         <div className="relative z-10 flex flex-col items-center justify-center w-full text-center">
-          {/* Time */}
           <div className="flex items-center justify-center gap-1 mb-1">
               <span className="text-[9px] sm:text-[11px] font-mono font-bold tracking-tight opacity-90">
                 {format(new Date(entry.timestamp), 'HH:mm')}
               </span>
-              {isOverdrive && <Sparkles size={11} className="text-white" />}
           </div>
           
           <div className="flex flex-col items-center w-full">
-            {/* Identity Title */}
             <div className={`text-[10px] sm:text-[14px] font-black uppercase leading-none tracking-tight ${isCompact ? 'hidden sm:block' : 'block'}`}>
                 {meta.label}
             </div>
             
-            {/* Blueprint: Included in mobile view as requested */}
             {plan && (
               <div className={`text-[9px] sm:text-[11px] font-mono text-white/70 truncate w-[92%] mt-1 leading-tight border-t border-white/20 pt-1`}>
                   {plan.name}
@@ -106,7 +110,6 @@ const WeeklyGrid: React.FC<WeeklyGridProps> = ({
             )}
           </div>
 
-          {/* Energy Dots: Made smaller for mobile */}
           <div className="flex gap-1 sm:gap-1.5 justify-center mt-1.5 sm:mt-2.5">
             {[...Array(5)].map((_, i) => (
               <div 
@@ -129,14 +132,14 @@ const WeeklyGrid: React.FC<WeeklyGridProps> = ({
       <style>{`
         @keyframes pulse-overdrive {
           0%, 100% { 
-            opacity: 1; 
-            filter: brightness(1); 
-            box-shadow: 0 0 15px rgba(124, 58, 237, 0.4); 
+            transform: scale(1);
+            background-color: #7c3aed; /* Standard Violet-600 */
+            box-shadow: 0 0 10px rgba(124, 58, 237, 0.4), 0 0 5px rgba(124, 58, 237, 0.2); 
           }
           50% { 
-            opacity: 0.9; 
-            filter: brightness(1.2); 
-            box-shadow: 0 0 25px rgba(124, 58, 237, 0.7); 
+            transform: scale(1.02);
+            background-color: #9b48ff; /* Brighter, glowing purple-violet */
+            box-shadow: 0 0 25px rgba(155, 72, 255, 0.7), 0 0 15px rgba(155, 72, 255, 0.4); 
           }
         }
         .matrix-cell {
@@ -145,7 +148,6 @@ const WeeklyGrid: React.FC<WeeklyGridProps> = ({
         .matrix-cell:hover {
           background-color: rgba(255, 255, 255, 0.03);
         }
-        /* Mobile: show plus on active touch or hover if supported */
         .mobile-add-zone:active .add-icon,
         .mobile-add-zone:hover .add-icon {
           opacity: 1 !important;
@@ -174,7 +176,7 @@ const WeeklyGrid: React.FC<WeeklyGridProps> = ({
         ))}
       </div>
 
-      {/* MOBILE DASHBOARD: Strict 2nd row for entries/logging */}
+      {/* MOBILE DASHBOARD */}
       <div className={`${isCompact ? 'grid' : 'hidden'} sm:hidden grid-cols-7 relative z-10 min-h-[160px]`}>
         {days.map((day) => {
           const dayEntries = getDayEntries(day);
@@ -203,7 +205,7 @@ const WeeklyGrid: React.FC<WeeklyGridProps> = ({
         })}
       </div>
 
-      {/* DESKTOP/HISTORY: Full 5-Identity Row Layout */}
+      {/* DESKTOP/HISTORY */}
       <div className={`${isCompact ? 'hidden sm:flex' : 'flex'} flex-col divide-y divide-neutral-800 flex-1 relative z-10`}>
         {identities.map((idType) => (
           <div key={idType} className="grid grid-cols-7 flex-1 min-h-[90px] sm:min-h-[120px] relative">

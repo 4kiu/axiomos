@@ -1,17 +1,15 @@
 
 import React, { useMemo } from 'react';
 import { WorkoutEntry, IdentityState } from '../types';
-import { differenceInDays, isSameDay } from 'date-fns';
-import { AlertCircle, Flame, Target, Activity, Zap } from 'lucide-react';
+import { isSameDay } from 'date-fns';
+import { AlertCircle, Flame, Target, Activity, Zap, CheckCircle2 } from 'lucide-react';
 
-// Local implementation of startOfDay
 const startOfDay = (date: Date | number) => {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d;
 };
 
-// Fix: Local implementation of subDays
 const subDays = (date: Date | number, amount: number) => {
   const d = new Date(date);
   d.setDate(d.getDate() - amount);
@@ -37,31 +35,34 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
     const today = startOfDay(new Date());
     const todayEntry = entries.find(e => isSameDay(startOfDay(new Date(e.timestamp)), today));
     
+    // Streak logic v1.7.2: 
+    // - Overdrive, Normal, Maintenance increment the count (+1).
+    // - Rest bridges the streak (doesn't break, doesn't increment).
+    // - Survival and empty logs break the streak (reset to 0).
+    
     let checkDate = today;
-    // If today hasn't been logged, start looking from yesterday
+    // Grace period: if no entry today, start checking from yesterday
     if (!todayEntry) {
       checkDate = subDays(today, 1);
     }
 
-    // Process entries backwards to calculate the current "Normal Streak"
-    // Normal increments, Overdrive preserves/bridges, Others break.
     while (true) {
       const entryForDate = entries.find(e => isSameDay(startOfDay(new Date(e.timestamp)), checkDate));
       
       if (entryForDate) {
-        if (entryForDate.identity === IdentityState.NORMAL) {
-          streakCount++;
-          checkDate = subDays(checkDate, 1);
-        } else if (entryForDate.identity === IdentityState.OVERDRIVE) {
-          // Overdrive bridges: it doesn't break the streak, 
-          // but per user requirement, it doesn't increment the 'Normal' count.
-          checkDate = subDays(checkDate, 1);
-        } else {
-          // Maintenance, Survival, Rest break the streak
-          break;
+        if (entryForDate.identity === IdentityState.SURVIVAL) {
+          break; // Survival breaks continuity
         }
+        
+        // If not Rest, it's an active training day that increments streak
+        if (entryForDate.identity !== IdentityState.REST) {
+          streakCount++;
+        }
+        
+        // Continue checking previous days
+        checkDate = subDays(checkDate, 1);
       } else {
-        // Gap in logs breaks the streak
+        // Empty log breaks continuity
         break;
       }
     }
@@ -81,15 +82,11 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
       const entry = entries.find(e => isSameDay(startOfDay(new Date(e.timestamp)), dayToCheck));
       
       if (entry) {
-        // High performance states
         if (entry.identity === IdentityState.OVERDRIVE || entry.identity === IdentityState.NORMAL) {
           weightedIntegrity += 100 / windowDays;
-        } 
-        // Maintenance/Rest are now sub-baseline for "Peak Integrity"
-        else if (entry.identity === IdentityState.MAINTENANCE || entry.identity === IdentityState.REST) {
+        } else if (entry.identity === IdentityState.MAINTENANCE || entry.identity === IdentityState.REST) {
           weightedIntegrity += 40 / windowDays; 
-        }
-        else if (entry.identity === IdentityState.SURVIVAL) {
+        } else if (entry.identity === IdentityState.SURVIVAL) {
           weightedIntegrity += 20 / windowDays;
         }
       }
@@ -129,7 +126,7 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
               <Activity size={14} className={integrityScore > 40 ? 'text-emerald-500' : 'text-rose-500'} />
               System Integrity
             </h3>
-            <div className="text-[9px] font-mono text-neutral-600 mt-1 uppercase">Diagnostics: Online</div>
+            <div className="text-[9px] font-mono text-neutral-600 mt-1 uppercase">Diagnostics: v1.7_STABLE</div>
           </div>
           <div className={`px-3 py-1 rounded-md border font-mono text-xs font-bold transition-colors ${healthBg} ${healthColor} border-current/20`}>
             {integrityScore}%
@@ -139,15 +136,15 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1">
             <div className="text-[9px] font-mono text-neutral-600 uppercase flex items-center gap-1">
-              <Target size={10} /> State
+              <Target size={10} /> Active State
             </div>
             <div className="text-lg font-bold text-white tracking-tight truncate">
-              {latestEntry ? IdentityState[latestEntry.identity] : 'INIT_REQUIRED'}
+              {latestEntry ? IdentityState[latestEntry.identity] : 'OFFLINE'}
             </div>
           </div>
           <div className="space-y-1">
             <div className="text-[9px] font-mono text-neutral-600 uppercase flex items-center gap-1">
-              <Flame size={10} className={currentStreak > 0 ? "text-orange-500" : "text-neutral-700"} /> Normal Streak
+              <Flame size={10} className={currentStreak > 0 ? "text-orange-500" : "text-neutral-700"} /> Constancy Streak
             </div>
             <div className="text-lg font-bold text-white tracking-tight">
               {currentStreak} <span className="text-[10px] text-neutral-500 font-normal">DYS</span>
@@ -155,10 +152,35 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-[9px] font-mono text-neutral-500 uppercase tracking-wider">Continuity Goal</span>
+            <span className={`text-[9px] font-mono uppercase font-bold ${currentStreak >= 6 ? 'text-emerald-400' : 'text-neutral-600'}`}>
+              {currentStreak >= 6 ? 'Peak Bonus Active' : `${currentStreak}/6 Days to +5 XP`}
+            </span>
+          </div>
+          <div className="grid grid-cols-6 gap-1.5 h-1.5">
+            {[...Array(6)].map((_, i) => {
+              const isActive = i < currentStreak;
+              const isTarget = i === 5;
+              return (
+                <div 
+                  key={i} 
+                  className={`rounded-full transition-all duration-500 ${
+                    isActive 
+                      ? (isTarget ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-neutral-200') 
+                      : 'bg-neutral-800'
+                  }`}
+                />
+              );
+            })}
+          </div>
+        </div>
+
         <div className="bg-black/40 border border-neutral-800/50 rounded-lg p-3 relative overflow-hidden">
           <div className="flex justify-between items-center mb-2">
-             <span className="text-[9px] font-mono text-neutral-500 uppercase tracking-wider">Biometric Sync</span>
-             <span className="text-[9px] font-mono text-emerald-500 uppercase font-bold">Stable</span>
+             <span className="text-[9px] font-mono text-neutral-500 uppercase tracking-wider">Neural Resonance</span>
+             <span className="text-[9px] font-mono text-emerald-500 uppercase font-bold">Resonant</span>
           </div>
           <div className="flex items-end gap-[2px] h-6">
             {[1, 2, 3, 4, 5, 4, 3, 2, 3, 4, 5, 4, 3, 2, 3, 4, 5, 4, 3, 2, 1].map((h, i) => (
@@ -180,13 +202,13 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
             <AlertCircle className="text-rose-500 shrink-0 mt-0.5" size={16} />
             <div className="text-[10px] text-rose-200 leading-tight font-mono">
               <span className="block font-bold mb-1 uppercase tracking-tighter text-rose-400">Integrity Warning</span>
-              Streak broken or performance decay detected. System integrity requires a Normal/Overdrive cycle to stabilize.
+              Identity drift detected. Missing logs or Survival states break continuity.
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-2 px-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[9px] font-mono text-neutral-500 uppercase tracking-widest">Axiom Link Persistent</span>
+            <CheckCircle2 size={12} className="text-emerald-500" />
+            <span className="text-[9px] font-mono text-neutral-500 uppercase tracking-widest">Axiom Matrix Synchronized</span>
           </div>
         )}
       </div>
