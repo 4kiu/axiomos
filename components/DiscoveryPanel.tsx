@@ -1,8 +1,11 @@
 
 import React, { useState } from 'react';
-import { WorkoutEntry, IdentityState } from '../types';
+import { WorkoutEntry, IdentityState } from '../types.ts';
 import { GoogleGenAI } from '@google/genai';
 import { BrainCircuit, Loader2, BarChart3, TrendingUp, ShieldCheck } from 'lucide-react';
+
+// Declare global process for browser shims to satisfy TypeScript build check
+declare const process: { env: { API_KEY: string } };
 
 interface DiscoveryPanelProps {
   entries: WorkoutEntry[];
@@ -21,7 +24,6 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({ entries }) => {
     setLoading(true);
     try {
       // Use the Google GenAI SDK to analyze logs.
-      // API key is obtained exclusively from the environment variable process.env.API_KEY.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const prompt = `
         Analyze these training logs from AxiomOS (a high-performance training operating system).
@@ -49,7 +51,6 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({ entries }) => {
         contents: prompt
       });
 
-      // Extract generated text from the property directly.
       setAnalysis(response.text || "Discovery engine returned no insights.");
     } catch (error) {
       console.error(error);

@@ -381,9 +381,9 @@ const PlanBuilder: React.FC<PlanBuilderProps> = ({ plans, onUpdatePlans }) => {
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-3">
             <BookOpen className="text-neutral-500" />
-            System Blueprints
+            Blueprints
           </h2>
-          <p className="text-sm text-neutral-500 font-mono">Profile creation for modular training sets</p>
+          <p className="text-sm text-neutral-500 font-mono">Modular training profile creation</p>
         </div>
         <button 
           onClick={startNewPlan}

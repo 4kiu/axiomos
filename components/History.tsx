@@ -44,7 +44,7 @@ const History: React.FC<HistoryProps> = ({ entries, plans, onEditEntry }) => {
             <Calendar className="text-neutral-500" />
             Archive Explorer
           </h2>
-          <p className="text-sm text-neutral-500 font-mono">Navigating temporal training patterns</p>
+          <p className="text-sm text-neutral-500 font-mono">Temporal training pattern navigation</p>
         </div>
 
         <div className="flex items-center gap-4 bg-neutral-900 p-2 rounded-xl border border-neutral-800 self-stretch sm:self-auto justify-between">

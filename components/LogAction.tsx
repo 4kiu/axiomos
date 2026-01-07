@@ -1,28 +1,26 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   IdentityState, 
   WorkoutEntry, 
   IDENTITY_METADATA, 
   ContextTag,
   WorkoutPlan
-} from '../types';
+} from '../types.ts';
 import { 
   X, 
-  Zap, 
   Activity, 
   Shield, 
   Calendar,
   Lock,
   ChevronRight,
-  Clock,
   Trash2,
   AlertCircle,
   BookOpen,
   Check
 } from 'lucide-react';
 import { isSameDay, format } from 'date-fns';
-import { MuscleIcon } from './PlanBuilder';
+import { MuscleIcon } from './PlanBuilder.tsx';
 
 // Fix: Local implementation of subDays as it was missing from date-fns export
 const subDays = (date: Date | number, amount: number) => {
@@ -34,7 +32,7 @@ const subDays = (date: Date | number, amount: number) => {
 interface LogActionProps {
   entries: WorkoutEntry[];
   plans: WorkoutPlan[];
-  onSave: (entry: Omit<WorkoutEntry, 'id'>, id?: string) => void;
+  onSave: (entry: Omit<WorkoutEntry, 'id' | 'branch'>, id?: string) => void;
   onDelete?: (id: string) => void;
   onCancel: () => void;
   initialDate?: Date;
@@ -73,11 +71,8 @@ const LogAction: React.FC<LogActionProps> = ({
   };
 
   const [sessionTime, setSessionTime] = useState(getInitialTime());
-
-  // Changed 'flow' to 'energized'
   const tags: ContextTag[] = ['energized', 'normal', 'tired', 'exams', 'stress', 'injured'];
 
-  // Logic: Overdrive logic
   const loggedToday = useMemo(() => {
     return entries.some(e => isSameDay(new Date(e.timestamp), new Date()));
   }, [entries]);
@@ -92,7 +87,6 @@ const LogAction: React.FC<LogActionProps> = ({
 
   const isOverdriveLocked = !loggedToday || loggedOverdriveYesterday;
 
-  // Rule: Only 1 log per column/day
   const dateCollision = useMemo(() => {
     const selectedDate = new Date(sessionTime);
     return entries.some(e => 
@@ -184,7 +178,6 @@ const LogAction: React.FC<LogActionProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
-        {/* Date Warning */}
         {dateCollision && (
           <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-1">
             <AlertCircle className="text-rose-500 shrink-0 mt-0.5" size={18} />
@@ -194,7 +187,6 @@ const LogAction: React.FC<LogActionProps> = ({
           </div>
         )}
 
-        {/* Temporal Anchor */}
         <section>
           <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block mb-3">Temporal Anchor</label>
           <div className="relative">
@@ -210,7 +202,6 @@ const LogAction: React.FC<LogActionProps> = ({
           </div>
         </section>
 
-        {/* Blueprint Selector */}
         <section>
           <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block mb-3">System Blueprint</label>
           {plans.length > 0 ? (
@@ -242,7 +233,6 @@ const LogAction: React.FC<LogActionProps> = ({
                                 <span className="text-[8px] font-mono uppercase">{m}</span>
                               </div>
                             ))}
-                            {targetMuscles.length > 3 && <span className="text-[8px] font-mono opacity-40">+{targetMuscles.length - 3}</span>}
                           </div>
                         </div>
                       </div>
@@ -259,19 +249,15 @@ const LogAction: React.FC<LogActionProps> = ({
           )}
         </section>
 
-        {/* Identity Grid */}
         <section>
           <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block mb-3">Identity Selection</label>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {/* Identity selection order updated: Survival before Rest */}
             {[IdentityState.OVERDRIVE, IdentityState.NORMAL, IdentityState.MAINTENANCE, IdentityState.SURVIVAL, IdentityState.REST].map(renderIdentityButton)}
           </div>
         </section>
 
-        {/* Energy slider */}
         <section>
           <div className="flex justify-between items-center mb-3">
-            {/* Label changed from Energy State to Pre-Training Energy */}
             <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">Pre-Training Energy</label>
             <span className="text-lg font-bold text-emerald-500">{energy}/5</span>
           </div>
@@ -285,7 +271,6 @@ const LogAction: React.FC<LogActionProps> = ({
           />
         </section>
 
-        {/* Tags */}
         <section>
           <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block mb-3">Context Tags</label>
           <div className="flex flex-wrap gap-2">
@@ -306,7 +291,6 @@ const LogAction: React.FC<LogActionProps> = ({
           </div>
         </section>
 
-        {/* Notes */}
         <section>
           <label className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest block mb-3">Notes / Logs</label>
           <textarea 
