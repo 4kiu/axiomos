@@ -138,7 +138,7 @@ const WeeklyGrid: React.FC<WeeklyGridProps> = ({
           }
           50% { 
             transform: scale(1.02);
-            background-color: #9b48ff; /* Brighter, glowing purple-violet */
+            background-color: #9b48ff; /* Brighter, gradually pulsing purple-violet */
             box-shadow: 0 0 25px rgba(155, 72, 255, 0.7), 0 0 15px rgba(155, 72, 255, 0.4); 
           }
         }

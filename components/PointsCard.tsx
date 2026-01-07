@@ -69,7 +69,7 @@ const PointsCard: React.FC<PointsCardProps> = ({ entries, weekStart }) => {
             maxNormalStreak = Math.max(maxNormalStreak, currentStreak);
         } else if (identity === IdentityState.OVERDRIVE) {
             // Overdrive is a bridge. We don't increment, but we don't reset.
-            // currentStreak remains unchanged.
+            // currentStreak remains unchanged from the last state.
         } else {
             // Maintenance, Survival, Rest, or no entry resets the streak
             currentStreak = 0;

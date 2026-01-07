@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { WorkoutEntry, IdentityState, WorkoutPlan } from '../types.ts';
 import { GoogleGenAI } from '@google/genai';
@@ -16,6 +17,14 @@ import {
   Info
 } from 'lucide-react';
 import { format } from 'date-fns';
+
+// Resolve TS2580: Cannot find name 'process'
+declare var process: {
+  env: {
+    API_KEY: string;
+    [key: string]: string | undefined;
+  };
+};
 
 declare const google: any;
 
