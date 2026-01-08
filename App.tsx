@@ -94,17 +94,16 @@ const App: React.FC = () => {
   const isInitialMount = useRef(true);
   const syncTimeoutRef = useRef<number | null>(null);
 
-  // Global performSync function for auto-sync and manual triggers
+  // Requirement: Limit to 5 latest syncs.
   const performSync = useCallback(async (token: string, currentEntries: WorkoutEntry[], currentPlans: WorkoutPlan[]) => {
     setSyncStatus('syncing');
     try {
-      // Get or Create Folder Logic
-      const q = encodeURIComponent("name = 'Axiom' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
-      const listResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}`, {
+      const q_folder = encodeURIComponent("name = 'Axiom' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+      const listFolderResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q_folder}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const listData = await listResponse.json();
-      let folderId = listData.files?.[0]?.id;
+      const folderData = await listFolderResponse.json();
+      let folderId = folderData.files?.[0]?.id;
 
       if (!folderId) {
         const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
@@ -114,6 +113,25 @@ const App: React.FC = () => {
         });
         const createData = await createResponse.json();
         folderId = createData.id;
+      }
+
+      // Cleanup Logic: Keep only latest 4 before adding the new one
+      const q_files = encodeURIComponent(`'${folderId}' in parents and name contains "sync." and trashed = false`);
+      const listFilesResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q_files}&orderBy=createdTime desc&fields=files(id, name, createdTime)`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const filesData = await listFilesResponse.json();
+      const existingSyncs = filesData.files || [];
+
+      // If we have 5 or more, delete the older ones to make room (keeping top 4)
+      if (existingSyncs.length >= 5) {
+        const toDelete = existingSyncs.slice(4);
+        for (const file of toDelete) {
+          await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
       }
 
       const syncName = `sync.${format(new Date(), 'ss.mm.HH.dd.MM.yyyy')}.json`;
@@ -146,7 +164,61 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Auto-sync Effect: Triggered when entries or plans change
+  const loadLatestSyncOnStartup = useCallback(async (token: string) => {
+    setSyncStatus('loading');
+    try {
+      const q_folder = encodeURIComponent("name = 'Axiom' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+      const listFolderResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q_folder}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const folderData = await listFolderResponse.json();
+      const folderId = folderData.files?.[0]?.id;
+      if (!folderId) {
+        setSyncStatus('idle');
+        return;
+      }
+
+      const q_files = encodeURIComponent(`'${folderId}' in parents and name contains "sync." and trashed = false`);
+      const listFilesResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q_files}&orderBy=createdTime desc&pageSize=1&fields=files(id, name)`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const filesData = await listFilesResponse.json();
+      const latestFile = filesData.files?.[0];
+
+      if (latestFile) {
+        const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${latestFile.id}?alt=media`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const manifest = await fileResponse.json();
+        if (manifest.data) {
+          if (manifest.data.entries) setEntries(manifest.data.entries);
+          if (manifest.data.plans) setPlans(manifest.data.plans);
+          setSyncStatus('success');
+          setTimeout(() => setSyncStatus('idle'), 2000);
+        }
+      } else {
+        setSyncStatus('idle');
+      }
+    } catch (e) {
+      console.error("Startup Sync Failure:", e);
+      setSyncStatus('error');
+    }
+  }, []);
+
+  // Initial Data Load
+  useEffect(() => {
+    const savedEntries = localStorage.getItem(STORAGE_KEY);
+    const savedPlans = localStorage.getItem(PLANS_STORAGE_KEY);
+    if (savedEntries) try { setEntries(JSON.parse(savedEntries)); } catch (e) {}
+    if (savedPlans) try { setPlans(JSON.parse(savedPlans)); } catch (e) {}
+
+    // Requirement: Auto import latest sync when found or on refresh
+    if (accessToken) {
+      loadLatestSyncOnStartup(accessToken);
+    }
+  }, [accessToken, loadLatestSyncOnStartup]);
+
+  // Requirement: Auto sync when a change is detected
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
@@ -157,7 +229,7 @@ const App: React.FC = () => {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = window.setTimeout(() => {
         performSync(accessToken, entries, plans);
-      }, 2000) as unknown as number;
+      }, 3000) as unknown as number; // Debounced auto-sync
     }
 
     return () => {
@@ -165,7 +237,10 @@ const App: React.FC = () => {
     };
   }, [entries, plans, accessToken, performSync]);
 
-  // History and Back Handling Logic
+  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }, [entries]);
+  useEffect(() => { localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans)); }, [plans]);
+
+  // View and History Handling
   useEffect(() => {
     if (!window.history.state) {
       window.history.replaceState({ view, isSubPage: false }, '');
@@ -237,16 +312,6 @@ const App: React.FC = () => {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-
-  useEffect(() => {
-    const savedEntries = localStorage.getItem(STORAGE_KEY);
-    const savedPlans = localStorage.getItem(PLANS_STORAGE_KEY);
-    if (savedEntries) try { setEntries(JSON.parse(savedEntries)); } catch (e) {}
-    if (savedPlans) try { setPlans(JSON.parse(savedPlans)); } catch (e) {}
-  }, []);
-
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }, [entries]);
-  useEffect(() => { localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans)); }, [plans]);
 
   const addOrUpdateEntry = (entryData: Omit<WorkoutEntry, 'id'>, id?: string) => {
     if (id) setEntries(prev => prev.map(e => e.id === id ? { ...entryData, id } : e));
@@ -325,8 +390,8 @@ const App: React.FC = () => {
           </div>
           <nav className="hidden sm:flex items-center gap-2 bg-neutral-900/50 p-1.5 rounded-xl border border-neutral-800"><NavItems /></nav>
           <div className="sm:hidden flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[9px] font-mono text-neutral-600 uppercase tracking-tighter">Link_Up</span>
+            <div className={`w-2 h-2 rounded-full ${accessToken ? 'bg-emerald-500' : 'bg-neutral-600'} animate-pulse`} />
+            <span className="text-[9px] font-mono text-neutral-600 uppercase tracking-tighter">{accessToken ? 'Linked' : 'Offline'}</span>
           </div>
         </div>
       </header>
@@ -438,7 +503,12 @@ const App: React.FC = () => {
           <span>&copy; 2026 Axiom</span>
           <a href="https://github.com/4kiu/axiom" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors"><Github size={12} /> Source Access</a>
         </div>
-        <div className="flex gap-4"><span>IDENTITY_STABLE: OK</span><span>SYSTEM_VERSION: ALPHA_v1.7</span></div>
+        <div className="flex gap-4">
+          <span className={syncStatus === 'syncing' ? 'animate-pulse text-emerald-500' : ''}>
+            {syncStatus === 'syncing' ? 'SYNC_ACTIVE' : 'IDENTITY_STABLE: OK'}
+          </span>
+          <span>SYSTEM_VERSION: ALPHA_v1.7</span>
+        </div>
       </footer>
     </div>
   );
