@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { WorkoutEntry, IdentityState } from '../types';
 import { Trophy, Star, Zap } from 'lucide-react';
@@ -25,9 +24,7 @@ const PointsCard: React.FC<PointsCardProps> = ({ entries, weekStart }) => {
     let maxNormalStreak = 0;
     let currentStreak = 0;
 
-    // Base XP and Energy Bonus Calculation
     weekEntries.forEach(e => {
-      // Identity Base Points
       if (e.identity === IdentityState.OVERDRIVE) {
         odCount++;
       } else if (e.identity === IdentityState.NORMAL) {
@@ -38,22 +35,16 @@ const PointsCard: React.FC<PointsCardProps> = ({ entries, weekStart }) => {
         basePoints += 3;
       }
 
-      // Energy Bonus (+1 for level 4 or 5)
       if (e.energy >= 4) {
         energyBonus += 1;
       }
     });
 
-    // Overdrive Tiers
     let odPoints = 0;
     if (odCount === 2) odPoints = odCount * 20;
     else if (odCount >= 3) odPoints = odCount * 25;
     else odPoints = odCount * 15;
 
-    // Normal Streak Logic v1.7.5:
-    // - Only NORMAL identity increments the streak counter. 
-    // - Overdrive acts as a bridge: it does NOT break the streak, but also doesn't increment it.
-    // - Other states (Maintenance, Survival, Rest) and empty logs break/reset the streak.
     const dayMap = new Map();
     weekEntries.forEach(e => {
         const d = new Date(e.timestamp).toDateString();
@@ -68,10 +59,7 @@ const PointsCard: React.FC<PointsCardProps> = ({ entries, weekStart }) => {
             currentStreak++;
             maxNormalStreak = Math.max(maxNormalStreak, currentStreak);
         } else if (identity === IdentityState.OVERDRIVE) {
-            // Overdrive is a bridge. We don't increment, but we don't reset.
-            // currentStreak remains unchanged from the last state.
         } else {
-            // Maintenance, Survival, Rest, or no entry resets the streak
             currentStreak = 0;
         }
     }
@@ -105,7 +93,7 @@ const PointsCard: React.FC<PointsCardProps> = ({ entries, weekStart }) => {
             <Star size={14} className="text-amber-500" />
             Performance Allocation
           </h3>
-          <div className="text-[10px] font-mono text-neutral-600">v1.8_XP_MATRIX</div>
+          <div className="text-[10px] font-mono text-neutral-600">v1.9_XP_MATRIX</div>
         </div>
 
         <div className="flex items-baseline gap-2">

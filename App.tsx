@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { IdentityState, WorkoutEntry, IDENTITY_METADATA, WorkoutPlan } from './types.ts';
+import { IdentityState, WorkoutEntry, IDENTITY_METADATA, WorkoutPlan, SyncMode } from './types.ts';
 import WeeklyGrid from './components/WeeklyGrid.tsx';
 import LogAction from './components/LogAction.tsx';
 import StatusPanel from './components/StatusPanel.tsx';
@@ -39,6 +40,7 @@ const PLANS_STORAGE_KEY = 'axiom_os_plans_v1';
 const VIEW_STORAGE_KEY = 'axiom_os_view_v1';
 const LAST_SYNC_TS_KEY = 'axiom_last_sync_ts';
 const SYNC_TOKEN_TS_KEY = 'axiom_sync_token_ts';
+const SYNC_MODE_KEY = 'axiom_sync_mode_v1';
 const SESSION_DURATION_DAYS = 30;
 
 const AxiomLogo = ({ className = "w-8 h-8" }: { className?: string }) => (
@@ -88,9 +90,8 @@ const App: React.FC = () => {
   
   const [isPlanEditing, setIsPlanEditing] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
-  const [showMobileTitle, setShowMobileTitle] = useState(true);
   
-  // Track dirty state with both React state (for UI) and a Ref (for stable event listener checks)
+  // Track dirty state for navigation guard
   const [isPlanDirty, _setIsPlanDirty] = useState(false);
   const isPlanDirtyRef = useRef(false);
   const setIsPlanDirty = useCallback((val: boolean) => {
@@ -114,15 +115,13 @@ const App: React.FC = () => {
     type?: 'danger' | 'warning';
   } | null>(null);
   
-  const [isNavVisible, setIsNavVisible] = useState(true);
-  const lastScrollY = useRef(0);
+  const [syncMode, setSyncMode] = useState<SyncMode>(() => {
+    const saved = localStorage.getItem(SYNC_MODE_KEY);
+    return (saved as SyncMode) || 'sync';
+  });
+
   const exitTimerRef = useRef<number | null>(null);
   
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
-  const touchEndX = useRef<number | null>(null);
-  const touchStartTarget = useRef<EventTarget | null>(null);
-
   const [hasImported, setHasImported] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(() => {
     const token = localStorage.getItem('axiom_sync_token');
@@ -137,15 +136,6 @@ const App: React.FC = () => {
   
   const isInitialMount = useRef(true);
   const syncTimeoutRef = useRef<number | null>(null);
-  const lastKnownSyncTs = useRef<number>(Number(localStorage.getItem(LAST_SYNC_TS_KEY) || 0));
-
-  // Transient Mobile Title timer
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setShowMobileTitle(false);
-    }, 10000);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   const performSync = useCallback(async (token: string, currentEntries: WorkoutEntry[], currentPlans: WorkoutPlan[]) => {
     if (!hasImported) return;
@@ -169,9 +159,25 @@ const App: React.FC = () => {
         folderId = createData.id;
       }
 
-      const ts = Date.now();
-      const syncName = `sync.${format(new Date(ts), 'ss.mm.HH.dd.MM.yyyy')}.json`;
-      const manifest = { version: '1.7', timestamp: ts, data: { entries: currentEntries, plans: currentPlans } };
+      const q_files = encodeURIComponent(`'${folderId}' in parents and name contains "sync." and trashed = false`);
+      const listFilesResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q_files}&orderBy=createdTime desc&fields=files(id, name, createdTime)`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const filesData = await listFilesResponse.json();
+      const existingSyncs = filesData.files || [];
+
+      if (existingSyncs.length >= 5) {
+        const toDelete = existingSyncs.slice(4);
+        for (const file of toDelete) {
+          await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+      }
+
+      const syncName = `sync.${format(new Date(), 'ss.mm.HH.dd.MM.yyyy')}.json`;
+      const manifest = { version: '1.7', timestamp: Date.now(), data: { entries: currentEntries, plans: currentPlans } };
       const metadata = { name: syncName, mimeType: 'application/json', parents: [folderId] };
 
       const form = new FormData();
@@ -186,35 +192,11 @@ const App: React.FC = () => {
 
       if (response.ok) {
         setSyncStatus('success');
-        lastKnownSyncTs.current = ts;
-        localStorage.setItem(LAST_SYNC_TS_KEY, ts.toString());
-        localStorage.setItem(SYNC_TOKEN_TS_KEY, ts.toString()); // Refresh session activity
-
-        try {
-          const q_cleanup = encodeURIComponent(`'${folderId}' in parents and name contains "sync." and trashed = false`);
-          const listFilesResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q_cleanup}&orderBy=createdTime desc&fields=files(id, name, createdTime)`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const cleanupData = await listFilesResponse.json();
-          if (cleanupData.files && cleanupData.files.length > 20) {
-            const filesToDelete = cleanupData.files.slice(20);
-            for (const file of filesToDelete) {
-              await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` },
-              });
-            }
-          }
-        } catch (cleanupErr) {
-          console.warn("Axiom Sync: Cleanup failed", cleanupErr);
-        }
-
         setTimeout(() => setSyncStatus('idle'), 2000);
       } else {
         if (response.status === 401) {
           setAccessToken(null);
           localStorage.removeItem('axiom_sync_token');
-          localStorage.removeItem(SYNC_TOKEN_TS_KEY);
         }
         setSyncStatus('error');
       }
@@ -239,31 +221,23 @@ const App: React.FC = () => {
       }
 
       const q_files = encodeURIComponent(`'${folderId}' in parents and name contains "sync." and trashed = false`);
-      const listFilesResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q_files}&orderBy=createdTime desc&pageSize=1&fields=files(id, name, createdTime)`, {
+      const listFilesResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q_files}&orderBy=createdTime desc&pageSize=1&fields=files(id, name)`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const filesData = await listFilesResponse.json();
       const latestFile = filesData.files?.[0];
 
       if (latestFile) {
-        const driveTs = new Date(latestFile.createdTime).getTime();
-        if (driveTs > lastKnownSyncTs.current) {
-          const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${latestFile.id}?alt=media`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const manifest = await fileResponse.json();
-          if (manifest.data) {
-            if (manifest.data.entries) setEntries(manifest.data.entries);
-            if (manifest.data.plans) setPlans(manifest.data.plans);
-            lastKnownSyncTs.current = manifest.timestamp || driveTs;
-            localStorage.setItem(LAST_SYNC_TS_KEY, lastKnownSyncTs.current.toString());
-            setSyncStatus('success');
-            setHasImported(true);
-            setTimeout(() => setSyncStatus('idle'), 2000);
-          }
-        } else {
-          setSyncStatus('idle');
+        const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${latestFile.id}?alt=media`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const manifest = await fileResponse.json();
+        if (manifest.data) {
+          if (manifest.data.entries) setEntries(manifest.data.entries);
+          if (manifest.data.plans) setPlans(manifest.data.plans);
+          setSyncStatus('success');
           setHasImported(true);
+          setTimeout(() => setSyncStatus('idle'), 2000);
         }
       } else {
         setSyncStatus('idle');
@@ -274,6 +248,8 @@ const App: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => { localStorage.setItem(SYNC_MODE_KEY, syncMode); }, [syncMode]);
+
   useEffect(() => {
     const savedEntries = localStorage.getItem(STORAGE_KEY);
     const savedPlans = localStorage.getItem(PLANS_STORAGE_KEY);
@@ -281,26 +257,23 @@ const App: React.FC = () => {
     if (savedPlans) try { setPlans(JSON.parse(savedPlans)); } catch (e) {}
 
     if (accessToken) {
-      loadLatestSync(accessToken);
+      if (syncMode === 'sync' || syncMode === 'load') {
+        loadLatestSync(accessToken);
+      }
     } else {
       setSyncNotice(true);
+      const timer = setTimeout(() => setSyncNotice(false), 8000);
+      return () => clearTimeout(timer);
     }
-  }, [accessToken, loadLatestSync]);
-
-  useEffect(() => {
-    let syncTimer: number | null = null;
-    if (syncNotice && !accessToken) {
-      syncTimer = window.setTimeout(() => setSyncNotice(false), 10000);
-    }
-    return () => {
-      if (syncTimer) window.clearTimeout(syncTimer);
-    };
-  }, [syncNotice, accessToken]);
+  }, [accessToken, loadLatestSync, syncMode]);
 
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-    } else if (accessToken && hasImported) {
+      return;
+    }
+    
+    if (accessToken && syncMode === 'sync' && hasImported) {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = window.setTimeout(() => {
         performSync(accessToken, entries, plans);
@@ -310,265 +283,171 @@ const App: React.FC = () => {
     return () => {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
     };
-  }, [entries, plans, accessToken, performSync, hasImported]);
+  }, [entries, plans, accessToken, performSync, syncMode, hasImported]);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }, [entries]);
   useEffect(() => { localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans)); }, [plans]);
 
-  // Handle the navigation exit warning (double back to exit)
-  const handleExitSequence = useCallback(() => {
-    if (exitWarning) {
-      // Allow exiting if warning is already displayed
-      return;
-    }
-    setExitWarning(true);
-    if (exitTimerRef.current) window.clearTimeout(exitTimerRef.current);
-    exitTimerRef.current = window.setTimeout(() => {
-      setExitWarning(false);
-    }, 2000);
-    // Reinstate the state to trap the next back press
-    window.history.pushState({ view, isSubPage: isPlanEditing, isLogging: isLogModalOpen }, '');
-  }, [exitWarning, view, isPlanEditing, isLogModalOpen]);
-
   useEffect(() => {
-    if (!window.history.state) window.history.replaceState({ view, isSubPage: false, isLogging: false }, '');
+    if (!window.history.state) window.history.replaceState({ view, isSubPage: false }, '');
     const handlePopState = (event: PopStateEvent) => {
       const state = event.state;
       if (state) {
         setView(state.view);
         setIsPlanEditing(state.isSubPage || false);
-        setIsLogModalOpen(state.isLogging || false);
-        if (!state.isSubPage) {
-          setEditingPlanId(null);
-          setIsPlanDirty(false);
-        }
-        if (!state.isLogging) setPreselectedLogData(null);
+        if (!state.isSubPage) setEditingPlanId(null);
         setExitWarning(false);
       } else {
-        if (view === 'current' && !isPlanEditing && !isLogModalOpen) handleExitSequence();
-        else if (isLogModalOpen) {
-          setIsLogModalOpen(false);
-          setPreselectedLogData(null);
-          window.history.replaceState({ view, isSubPage: isPlanEditing, isLogging: false }, '');
-        } else if (isPlanEditing) {
-          if (isPlanDirtyRef.current) {
-             window.history.pushState({ view, isSubPage: true, isLogging: false }, '');
-             confirmDiscardChanges(() => {
-               setIsPlanDirty(false);
-               setIsPlanEditing(false);
-               setEditingPlanId(null);
-               window.history.back();
-             });
-          } else {
-            setIsPlanEditing(false);
-            setEditingPlanId(null);
-            window.history.replaceState({ view, isSubPage: false, isLogging: false }, '');
-          }
+        if (view === 'current' && !isPlanEditing) handleExitSequence();
+        else if (isPlanEditing) {
+          setIsPlanEditing(false);
+          setEditingPlanId(null);
+          window.history.replaceState({ view, isSubPage: false }, '');
         } else changeView('current');
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [view, isPlanEditing, isLogModalOpen, isPlanDirty, handleExitSequence]);
+  }, [view, isPlanEditing]);
 
-  const confirmDiscardChanges = (onConfirm: () => void) => {
-    setConfirmModal({
-      title: 'Discard Changes?',
-      message: 'You have unsaved modifications to this training blueprint. Leaving will result in data loss.',
-      confirmText: 'Discard & Leave',
-      type: 'danger',
-      onConfirm: () => {
-        setIsPlanDirty(false);
-        setConfirmModal(null);
-        onConfirm();
-      }
-    });
-  };
-
-  const performViewChange = (newView: ViewType) => {
-    // 1. If we are exactly where we want to be, do nothing
-    if (newView === view && !isPlanEditing && !isLogModalOpen) return;
-    
-    // 2. Direct Dashboard Navigation (Fix): Reset everything and go home immediately.
-    if (newView === 'current') {
-      setIsPlanEditing(false);
-      setEditingPlanId(null);
-      setIsPlanDirty(false);
-      setIsLogModalOpen(false);
-      setPreselectedLogData(null);
-      
-      // Push new state to ensure it's the current top of the stack
-      window.history.pushState({ view: 'current', isSubPage: false, isLogging: false }, '');
-      setView('current');
-      localStorage.setItem(VIEW_STORAGE_KEY, 'current');
-      return;
+  const handleExitSequence = () => {
+    if (exitWarning) window.history.back();
+    else {
+      setExitWarning(true);
+      window.history.pushState({ view: 'current', isSubPage: false }, '');
+      if (exitTimerRef.current) window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = window.setTimeout(() => setExitWarning(false), 3000) as unknown as number;
     }
-
-    // 3. Normal View Transition Logic
-    setIsPlanEditing(false);
-    setEditingPlanId(null);
-    setIsPlanDirty(false);
-    setIsLogModalOpen(false);
-
-    if (view === 'current') {
-      window.history.pushState({ view: newView, isSubPage: false, isLogging: false }, '');
-    } else {
-      window.history.replaceState({ view: newView, isSubPage: false, isLogging: false }, '');
-    }
-    
-    setView(newView);
-    localStorage.setItem(VIEW_STORAGE_KEY, newView);
   };
 
   const changeView = (newView: ViewType) => {
-    if (isPlanDirtyRef.current) {
-      confirmDiscardChanges(() => performViewChange(newView));
+    if (newView === view && !isPlanEditing) return;
+
+    // Navigation Guard for unsaved changes
+    if (isPlanDirty) {
+      setConfirmModal({
+        title: "Unsaved Sequences",
+        message: "You have unsaved blueprint modifications. Abort changes and navigate away?",
+        type: 'warning',
+        confirmText: "Abort Changes",
+        onConfirm: () => {
+          setConfirmModal(null);
+          setIsPlanDirty(false);
+          performViewChange(newView);
+        }
+      });
       return;
     }
+
     performViewChange(newView);
+  };
+
+  const performViewChange = (newView: ViewType) => {
+    setView(newView);
+    setIsPlanEditing(false);
+    setEditingPlanId(null);
+    window.history.pushState({ view: newView, isSubPage: false }, '');
+    localStorage.setItem(VIEW_STORAGE_KEY, newView);
   };
 
   const handlePlanEditorOpen = (planId: string | null) => {
     setIsPlanEditing(true);
     setEditingPlanId(planId);
-    setIsPlanDirty(false);
-    window.history.pushState({ view: 'plans', isSubPage: true, isLogging: false }, '');
+    window.history.pushState({ view: 'plans', isSubPage: true }, '');
   };
 
-  const handlePlanEditorClose = () => { 
-    if (isPlanDirtyRef.current) {
-      confirmDiscardChanges(() => window.history.back());
-    } else if (isPlanEditing) {
-      window.history.back(); 
+  const handlePlanEditorClose = (force: boolean = false) => { 
+    if (!force && isPlanDirty) {
+      setConfirmModal({
+        title: "Unsaved Changes",
+        message: "System detect unsaved modifications. Exit blueprint editor?",
+        type: 'warning',
+        confirmText: "Exit Editor",
+        onConfirm: () => {
+          setConfirmModal(null);
+          setIsPlanDirty(false);
+          if (isPlanEditing) window.history.back();
+        }
+      });
+      return;
     }
+    if (isPlanEditing) window.history.back(); 
   };
-
-  const openLogModal = useCallback((data?: { date?: Date, identity?: IdentityState, editingEntry?: WorkoutEntry, initialPlanId?: string }) => {
-    if (data) setPreselectedLogData(data);
-    setIsLogModalOpen(true);
-    window.history.pushState({ view, isSubPage: isPlanEditing, isLogging: true }, '');
-  }, [view, isPlanEditing]);
-
-  const closeLogModal = useCallback(() => {
-    if (isLogModalOpen) window.history.back();
-  }, [isLogModalOpen]);
 
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
-      if (currentScrollY > lastScrollY.current && currentScrollY > 50) setIsNavVisible(false);
-      else setIsNavVisible(true);
-      
       if (currentScrollY > 300) setShowScrollTop(true);
       else setShowScrollTop(false);
-      
-      lastScrollY.current = currentScrollY;
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.targetTouches[0].clientX;
-    touchStartY.current = e.targetTouches[0].clientY;
-    touchStartTarget.current = e.target;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    touchEndX.current = e.targetTouches[0].clientX;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartX.current || !touchEndX.current || !touchStartY.current) return;
-    
-    const distanceX = touchStartX.current - touchEndX.current;
-    const distanceY = Math.abs(touchStartY.current - e.changedTouches[0].clientY);
-    
-    if (distanceY > 100) return;
-
-    const target = touchStartTarget.current as HTMLElement;
-    const isWeekGrid = target?.closest('.week-grid-container');
-
-    if (isWeekGrid && view === 'current') {
-      if (distanceX > 50) setDashboardWeekOffset(prev => prev + 1);
-      else if (distanceX < -50) setDashboardWeekOffset(prev => prev - 1);
-    } else if (Math.abs(distanceX) > 70) {
-      if (isPlanDirtyRef.current) {
-        confirmDiscardChanges(() => {
-          const viewOrder: ViewType[] = ['current', 'plans', 'history', 'discovery'];
-          const currentIndex = viewOrder.indexOf(view);
-          if (distanceX > 70 && currentIndex < viewOrder.length - 1) changeView(viewOrder[currentIndex + 1]);
-          else if (distanceX < -70 && currentIndex > 0) changeView(viewOrder[currentIndex - 1]);
-        });
-      } else {
-        const viewOrder: ViewType[] = ['current', 'plans', 'history', 'discovery'];
-        const currentIndex = viewOrder.indexOf(view);
-        if (distanceX > 70 && currentIndex < viewOrder.length - 1) changeView(viewOrder[currentIndex + 1]);
-        else if (distanceX < -70 && currentIndex > 0) changeView(viewOrder[currentIndex - 1]);
-      }
-    }
-    
-    touchStartX.current = null;
-    touchStartY.current = null;
-    touchEndX.current = null;
-    touchStartTarget.current = null;
-  };
-
   const addOrUpdateEntry = (entryData: Omit<WorkoutEntry, 'id'>, id?: string) => {
     if (id) setEntries(prev => prev.map(e => e.id === id ? { ...entryData, id } : e));
     else setEntries(prev => [...prev, { ...entryData, id: crypto.randomUUID() }]);
-    closeLogModal();
+    setIsLogModalOpen(false);
+    setPreselectedLogData(null);
   };
 
-  const handleDeleteEntry = (id: string) => {
+  const openLogModal = () => {
+    setPreselectedLogData(null);
+    setIsLogModalOpen(true);
+  };
+
+  const onUpdatePlans = (newPlans: WorkoutPlan[]) => {
+    setPlans(newPlans);
+  };
+
+  const handleDeletePlan = (planId: string) => {
     setConfirmModal({
-      title: 'Purge Record?',
-      message: 'This identity sequence will be permanently erased from system memory. This action is irreversible.',
-      confirmText: 'Execute Purge',
+      title: "Purge Blueprint?",
+      message: "All modules and settings within this training profile will be permanently lost from local memory.",
       type: 'danger',
+      confirmText: "Purge Blueprint",
+      onConfirm: () => {
+        setPlans(prev => prev.filter(p => p.id !== planId));
+        setConfirmModal(null);
+      }
+    });
+  };
+
+  const deleteEntry = (id: string) => {
+    setConfirmModal({
+      title: "Purge Identity Log?",
+      message: "This record will be permanently deleted from the Axiom system matrix.",
+      type: 'danger',
+      confirmText: "Purge Record",
       onConfirm: () => {
         setEntries(prev => prev.filter(e => e.id !== id));
-        closeLogModal();
         setConfirmModal(null);
+        setIsLogModalOpen(false);
+        setPreselectedLogData(null);
       }
     });
   };
-
-  const handleDeletePlan = (id: string) => {
-    setConfirmModal({
-      title: 'Decommission Blueprint?',
-      message: 'Removing this blueprint will delete all modular exercise configurations. Existing training logs will persist but without blueprint reference.',
-      confirmText: 'Decommission',
-      type: 'danger',
-      onConfirm: () => {
-        onUpdatePlans(plans.filter(p => p.id !== id));
-        setConfirmModal(null);
-      }
-    });
-  };
-
-  const onUpdatePlans = useCallback((newPlans: WorkoutPlan[]) => {
-    setPlans(newPlans);
-    setIsPlanDirty(false);
-  }, [setIsPlanDirty]);
 
   const handleLogPlan = (planId: string) => {
     const today = new Date();
     const existingToday = entries.find(e => isSameDay(new Date(e.timestamp), today));
     if (existingToday) setEntries(prev => prev.map(e => e.id === existingToday.id ? { ...e, planId } : e));
     else {
-      openLogModal({ date: today, identity: IdentityState.NORMAL, initialPlanId: planId });
+      setPreselectedLogData({ date: today, identity: IdentityState.NORMAL, initialPlanId: planId });
+      setIsLogModalOpen(true);
     }
   };
 
   const handleCellClick = (date: Date, identity: IdentityState) => {
-    openLogModal({ date, identity });
+    setPreselectedLogData({ date, identity });
+    setIsLogModalOpen(true);
   };
 
   const handleEditEntry = (id: string) => {
     const entry = entries.find(e => e.id === id);
     if (entry) {
-      openLogModal({ editingEntry: entry });
+      setPreselectedLogData({ editingEntry: entry });
+      setIsLogModalOpen(true);
     }
   };
 
@@ -582,10 +461,10 @@ const App: React.FC = () => {
 
   const NavItems = () => (
     <>
-      <button onClick={() => changeView('current')} className={`px-4 sm:px-6 py-2 rounded-lg flex items-center justify-center transition-all ${view === 'current' ? 'bg-neutral-100 text-black' : 'hover:bg-neutral-800 text-neutral-400'}`} title="Dashboard"><LayoutDashboard size={22} /></button>
-      <button onClick={() => changeView('plans')} className={`px-4 sm:px-6 py-2 rounded-lg flex items-center justify-center transition-all ${view === 'plans' ? 'bg-neutral-100 text-black' : 'hover:bg-neutral-800 text-neutral-400'}`} title="Blueprints"><BookOpen size={22} /></button>
-      <button onClick={() => changeView('history')} className={`px-4 sm:px-6 py-2 rounded-lg flex items-center justify-center transition-all ${view === 'history' ? 'bg-neutral-100 text-black' : 'hover:bg-neutral-800 text-neutral-400'}`} title="History"><HistoryIcon size={22} /></button>
-      <button onClick={() => changeView('discovery')} className={`px-4 sm:px-6 py-2 rounded-lg flex items-center justify-center transition-all ${view === 'discovery' ? 'bg-neutral-100 text-black' : 'hover:bg-neutral-800 text-neutral-400'}`} title="Intelligence"><BrainCircuit size={22} /></button>
+      <button onClick={() => changeView('current')} className={`px-4 sm:px-6 py-2 rounded-lg flex items-center justify-center transition-all ${view === 'current' ? 'bg-neutral-100 text-black' : 'hover:bg-neutral-800 text-neutral-400'}`}><LayoutDashboard size={22} /></button>
+      <button onClick={() => changeView('plans')} className={`px-4 sm:px-6 py-2 rounded-lg flex items-center justify-center transition-all ${view === 'plans' ? 'bg-neutral-100 text-black' : 'hover:bg-neutral-800 text-neutral-400'}`}><BookOpen size={22} /></button>
+      <button onClick={() => changeView('history')} className={`px-4 sm:px-6 py-2 rounded-lg flex items-center justify-center transition-all ${view === 'history' ? 'bg-neutral-100 text-black' : 'hover:bg-neutral-800 text-neutral-400'}`}><HistoryIcon size={22} /></button>
+      <button onClick={() => changeView('discovery')} className={`px-4 sm:px-6 py-2 rounded-lg flex items-center justify-center transition-all ${view === 'discovery' ? 'bg-neutral-100 text-black' : 'hover:bg-neutral-800 text-neutral-400'}`}><BrainCircuit size={22} /></button>
     </>
   );
 
@@ -594,10 +473,22 @@ const App: React.FC = () => {
     let dotColor = accessToken ? 'bg-emerald-500' : 'bg-neutral-600';
     let Icon = accessToken ? Cloud : CloudOff;
     
-    if (syncStatus === 'loading') { statusText = 'Importing...'; dotColor = 'bg-amber-500'; Icon = RefreshCw; }
-    else if (syncStatus === 'syncing') { statusText = 'Syncing...'; dotColor = 'bg-blue-500'; Icon = RefreshCw; }
-    else if (syncStatus === 'success' && accessToken) { statusText = 'Success'; Icon = CheckCircle2; }
-    else if (syncStatus === 'error') { statusText = 'Auth Error'; dotColor = 'bg-rose-500'; Icon = AlertTriangle; }
+    if (syncStatus === 'loading') {
+      statusText = 'Importing...';
+      dotColor = 'bg-amber-500';
+      Icon = RefreshCw;
+    } else if (syncStatus === 'syncing') {
+      statusText = 'Syncing...';
+      dotColor = 'bg-blue-500';
+      Icon = RefreshCw;
+    } else if (syncStatus === 'success' && accessToken) {
+      statusText = 'Success';
+      Icon = CheckCircle2;
+    } else if (syncStatus === 'error') {
+      statusText = 'Auth Error';
+      dotColor = 'bg-rose-500';
+      Icon = AlertTriangle;
+    }
 
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/40 border border-neutral-800 rounded-lg">
@@ -609,33 +500,18 @@ const App: React.FC = () => {
   };
 
   return (
-    <div 
-      className="min-h-screen bg-[#121212] text-neutral-200 flex flex-col font-sans pb-20 sm:pb-0 select-none overflow-x-hidden"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div className="min-h-screen bg-[#121212] text-neutral-200 flex flex-col font-sans pb-20 sm:pb-0">
       <header className="border-b border-neutral-800 p-4 sticky top-0 bg-[#121212]/90 backdrop-blur-md z-30">
         <div className="max-w-7xl mx-auto flex flex-row justify-between items-center">
-          <div className="flex items-center">
-            <AxiomLogo className="w-8 h-8 shrink-0" />
-            <div className={`flex flex-col transition-all duration-1000 ease-in-out overflow-hidden
-              ${showMobileTitle 
-                ? 'max-w-[200px] opacity-100 ml-3' 
-                : 'max-w-0 opacity-0 ml-0 pointer-events-none sm:max-w-[300px] sm:opacity-100 sm:ml-3 sm:pointer-events-auto'}
-            `}>
-              <h1 className="text-lg font-mono font-bold tracking-tight uppercase leading-none text-white whitespace-nowrap">Axiom v1.9.0</h1>
-              <span className="text-[9px] text-neutral-500 font-mono uppercase tracking-tighter whitespace-nowrap">Personal Intelligence OS</span>
+          <div className="flex items-center gap-3">
+            <AxiomLogo className="w-8 h-8" />
+            <div className="flex flex-col">
+              <h1 className="text-lg font-mono font-bold tracking-tight uppercase leading-none text-white">Axiom v1.9</h1>
+              <span className="text-[9px] text-neutral-500 font-mono uppercase tracking-tighter">Personal Intelligence OS</span>
             </div>
           </div>
           <nav className="hidden sm:flex items-center gap-2 bg-neutral-900/50 p-1.5 rounded-xl border border-neutral-800"><NavItems /></nav>
-          <div className="flex items-center gap-2">
-            {dashboardWeekOffset !== 0 ? (
-              <button onClick={() => setDashboardWeekOffset(0)} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500 text-black rounded-lg font-mono text-[9px] font-bold uppercase tracking-tight shadow-lg animate-in fade-in zoom-in-95">
-                <RotateCcw size={12} /><span>Return to Current</span>
-              </button>
-            ) : <StatusIndicator />}
-          </div>
+          <StatusIndicator />
         </div>
       </header>
       
@@ -707,7 +583,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      <nav className={`sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#121212]/95 backdrop-blur-xl border-t border-neutral-800 px-6 py-4 flex justify-between items-center transition-transform duration-300 ease-in-out ${isNavVisible ? 'translate-y-0' : 'translate-y-full'}`}><NavItems /></nav>
+      <nav className={`sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#121212]/95 backdrop-blur-xl border-t border-neutral-800 px-6 py-4 flex justify-between items-center transition-transform duration-300 ease-in-out translate-y-0`}><NavItems /></nav>
       
       <button 
         onClick={scrollToTop}
@@ -718,7 +594,7 @@ const App: React.FC = () => {
         <ArrowUp size={24} className="group-hover:-translate-y-0.5 transition-transform" />
       </button>
 
-      {/* Confirmation Modal */}
+      {/* Custom Confirmation Modal */}
       {confirmModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setConfirmModal(null)} />
@@ -752,14 +628,14 @@ const App: React.FC = () => {
 
       {isLogModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeLogModal} />
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsLogModalOpen(false)} />
           <div className="relative bg-[#1a1a1a] border border-neutral-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <LogAction 
               entries={entries} 
               plans={plans} 
               onSave={addOrUpdateEntry} 
-              onDelete={handleDeleteEntry} 
-              onCancel={closeLogModal} 
+              onDelete={deleteEntry} 
+              onCancel={() => setIsLogModalOpen(false)} 
               initialDate={preselectedLogData?.date} 
               initialIdentity={preselectedLogData?.identity} 
               editingEntry={preselectedLogData?.editingEntry} 
@@ -784,7 +660,7 @@ const App: React.FC = () => {
       )}
       <footer className="hidden sm:flex border-t border-neutral-800 p-2 text-[10px] font-mono text-neutral-600 justify-between bg-[#0e0e0e]">
         <div className="flex gap-4"><span>&copy; 2026 Axiom</span><a href="https://github.com" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors"><Github size={12} /> Source Access</a></div>
-        <div className="flex gap-4"><span className={syncStatus !== 'idle' ? 'animate-pulse text-emerald-500' : ''}> {syncStatus !== 'idle' ? 'SYNC_ACTIVE' : 'IDENTITY_STABLE: OK'} </span><span>SYSTEM_VERSION: ALPHA_v1.9.0</span></div>
+        <div className="flex gap-4"><span className={syncStatus !== 'idle' ? 'animate-pulse text-emerald-500' : ''}> {syncStatus !== 'idle' ? 'SYNC_ACTIVE' : 'IDENTITY_STABLE: OK'} </span><span>SYSTEM_VERSION: ALPHA_v1.9</span></div>
       </footer>
     </div>
   );

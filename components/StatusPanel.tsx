@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { WorkoutEntry, IdentityState } from '../types';
 import { isSameDay } from 'date-fns';
@@ -35,13 +34,7 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
     const today = startOfDay(new Date());
     const todayEntry = entries.find(e => isSameDay(startOfDay(new Date(e.timestamp)), today));
     
-    // Streak logic v1.7.2: 
-    // - Overdrive, Normal, Maintenance increment the count (+1).
-    // - Rest bridges the streak (doesn't break, doesn't increment).
-    // - Survival and empty logs break the streak (reset to 0).
-    
     let checkDate = today;
-    // Grace period: if no entry today, start checking from yesterday
     if (!todayEntry) {
       checkDate = subDays(today, 1);
     }
@@ -51,18 +44,15 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
       
       if (entryForDate) {
         if (entryForDate.identity === IdentityState.SURVIVAL) {
-          break; // Survival breaks continuity
+          break;
         }
         
-        // If not Rest, it's an active training day that increments streak
         if (entryForDate.identity !== IdentityState.REST) {
           streakCount++;
         }
         
-        // Continue checking previous days
         checkDate = subDays(checkDate, 1);
       } else {
-        // Empty log breaks continuity
         break;
       }
     }
@@ -126,7 +116,7 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
               <Activity size={14} className={integrityScore > 40 ? 'text-emerald-500' : 'text-rose-500'} />
               System Integrity
             </h3>
-            <div className="text-[9px] font-mono text-neutral-600 mt-1 uppercase">Diagnostics: v1.8_STABLE</div>
+            <div className="text-[9px] font-mono text-neutral-600 mt-1 uppercase">Diagnostics: v1.9_STABLE</div>
           </div>
           <div className={`px-3 py-1 rounded-md border font-mono text-xs font-bold transition-colors ${healthBg} ${healthColor} border-current/20`}>
             {integrityScore}%

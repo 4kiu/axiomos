@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { WorkoutEntry, IdentityState, WorkoutPlan } from '../types.ts';
+import { WorkoutEntry, IdentityState, WorkoutPlan, SyncMode } from '../types.ts';
 import { GoogleGenAI } from '@google/genai';
 import { 
   BrainCircuit, 
@@ -15,7 +15,8 @@ import {
   RefreshCw,
   Link,
   LogOut,
-  Zap
+  Zap,
+  Settings
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -203,7 +204,7 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
               </div>
             ) : analysis ? (
               <div className="prose prose-invert max-w-none">
-                <div className="text-[10px] font-mono text-violet-400 uppercase tracking-widest mb-4">Discovery Results v1.1</div>
+                <div className="text-[10px] font-mono text-violet-400 uppercase tracking-widest mb-4">Discovery Results v1.9</div>
                 <div className="whitespace-pre-wrap text-neutral-300 leading-relaxed text-sm md:text-base">{analysis}</div>
               </div>
             ) : (
@@ -277,7 +278,7 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
                  <span className="text-[9px] font-mono font-bold text-violet-400 uppercase tracking-widest">Auto-Pulse Active</span>
                </div>
                <p className="text-[9px] text-neutral-500 leading-relaxed font-mono uppercase">
-                 Sync status: <span className="text-emerald-500">NOMINAL</span>. Automatic parity active for all blueprints and identity logs.
+                 Sync status: <span className="text-emerald-500">NOMINAL</span>. Automatic parity active for all blueprints and identity logs when system is linked.
                </p>
             </div>
           </div>

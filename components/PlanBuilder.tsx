@@ -125,7 +125,7 @@ interface PlanBuilderProps {
   externalIsEditing?: boolean;
   externalEditingPlanId?: string | null;
   onOpenEditor?: (planId: string | null) => void;
-  onCloseEditor?: () => void;
+  onCloseEditor?: (force?: boolean) => void;
   onDirtyChange?: (isDirty: boolean) => void;
 }
 
@@ -246,7 +246,7 @@ const PlanBuilder: React.FC<PlanBuilderProps> = ({
       return;
     }
 
-    if (onCloseEditor) onCloseEditor();
+    if (onCloseEditor) onCloseEditor(true);
     else {
       setIsCreating(false);
       setEditingPlanId(null);
@@ -449,7 +449,7 @@ const PlanBuilder: React.FC<PlanBuilderProps> = ({
         <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
           <div className="flex-1 max-xl flex items-center gap-4">
             <button 
-              onClick={onCloseEditor} 
+              onClick={() => onCloseEditor?.()} 
               className="p-2 -ml-2 text-neutral-400 hover:text-white transition-colors"
             >
               <ChevronLeft size={24} />
