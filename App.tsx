@@ -35,6 +35,8 @@ import {
 } from 'lucide-react';
 import { format, addWeeks, addDays, isSameDay, formatDistanceToNow } from 'date-fns';
 
+declare const google: any;
+
 const STORAGE_KEY = 'axiom_os_data_v1';
 const PLANS_STORAGE_KEY = 'axiom_os_plans_v1';
 const VIEW_STORAGE_KEY = 'axiom_os_view_v1';
@@ -77,6 +79,100 @@ const startOfWeek = (date: Date | number, options?: { weekStartsOn?: number }) =
   d.setDate(d.getDate() - diff);
   d.setHours(0, 0, 0, 0);
   return d;
+};
+
+type SyncStatusType = 'idle' | 'syncing' | 'loading' | 'success' | 'error';
+
+interface StatusIndicatorProps {
+  accessToken: string | null;
+  syncStatus: SyncStatusType;
+  lastSyncTs: number;
+  now: number;
+  onSync: () => void;
+  onNavigateToDiscovery: () => void;
+}
+
+const StatusIndicator: React.FC<StatusIndicatorProps> = ({ 
+  accessToken, 
+  syncStatus, 
+  lastSyncTs, 
+  now, 
+  onSync, 
+  onNavigateToDiscovery 
+}) => {
+  const lastSyncStr = useMemo(() => {
+    if (!lastSyncTs) return 'Never';
+    try {
+      return formatDistanceToNow(lastSyncTs, { addSuffix: true });
+    } catch (e) {
+      return 'Recently';
+    }
+  }, [lastSyncTs, now]);
+
+  let label = 'Offline';
+  let dotColor = 'bg-neutral-600';
+  let Icon = CloudOff;
+  let bgColor = 'bg-neutral-900/40';
+  let textColor = 'text-neutral-500';
+
+  if (accessToken) {
+    label = 'Linked';
+    dotColor = 'bg-emerald-500';
+    Icon = Cloud;
+    textColor = 'text-neutral-400';
+
+    if (syncStatus === 'syncing') {
+      label = 'Syncing';
+      dotColor = 'bg-blue-500';
+      Icon = RefreshCw;
+    } else if (syncStatus === 'loading') {
+      label = 'Importing';
+      dotColor = 'bg-amber-500';
+      Icon = RefreshCw;
+    } else if (syncStatus === 'success') {
+      label = 'Success';
+      dotColor = 'bg-emerald-400';
+      Icon = CheckCircle2;
+      bgColor = 'bg-emerald-500/5';
+      textColor = 'text-emerald-400/80';
+    } else if (syncStatus === 'error') {
+      label = 'Error';
+      dotColor = 'bg-rose-500';
+      Icon = AlertTriangle;
+      bgColor = 'bg-rose-500/5';
+      textColor = 'text-rose-400';
+    }
+  }
+
+  const handleStatusClick = () => {
+    if (accessToken) {
+      onSync();
+    } else {
+      onNavigateToDiscovery();
+    }
+  };
+
+  const isSpinning = syncStatus === 'syncing' || syncStatus === 'loading';
+
+  return (
+    <button 
+      onClick={handleStatusClick}
+      className={`flex items-center gap-3 px-3 py-1.5 ${bgColor} border border-neutral-800 rounded-lg hover:border-neutral-600 transition-all group overflow-hidden relative max-w-[140px] sm:max-w-none`}
+    >
+      <div className="flex items-center gap-2">
+        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${isSpinning ? 'animate-pulse' : ''}`} />
+        <div className="flex flex-col items-start leading-none text-left">
+          <span className={`text-[10px] font-mono font-bold uppercase tracking-tighter whitespace-nowrap ${textColor}`}>{label}</span>
+          {accessToken && (
+            <span className="text-[7px] font-mono text-neutral-600 uppercase tracking-tighter mt-0.5 group-hover:text-neutral-400 transition-colors">
+              Last: {lastSyncStr}
+            </span>
+          )}
+        </div>
+      </div>
+      <Icon size={12} className={`text-neutral-500 shrink-0 ${isSpinning ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} />
+    </button>
+  );
 };
 
 type ViewType = 'current' | 'plans' | 'history' | 'discovery';
@@ -132,7 +228,12 @@ const App: React.FC = () => {
     }
     return null;
   });
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'loading' | 'success' | 'error'>('idle');
+  const [userInfo, setUserInfo] = useState<{ name: string; email: string } | null>(() => {
+    const saved = localStorage.getItem('axiom_sync_profile');
+    return saved ? JSON.parse(saved) : null;
+  });
+  
+  const [syncStatus, setSyncStatus] = useState<SyncStatusType>('idle');
   
   const syncTimeoutRef = useRef<number | null>(null);
   const [lastSyncTs, setLastSyncTs] = useState<number>(Number(localStorage.getItem(LAST_SYNC_TS_KEY) || 0));
@@ -143,6 +244,63 @@ const App: React.FC = () => {
     const interval = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(interval);
   }, []);
+
+  const fetchUserInfo = useCallback(async (token: string) => {
+    try {
+      const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const profile = { name: data.name, email: data.email };
+        setUserInfo(profile);
+        localStorage.setItem('axiom_sync_profile', JSON.stringify(profile));
+      } else if (response.status === 401) {
+        setAccessToken(null);
+        localStorage.removeItem('axiom_sync_token');
+        localStorage.removeItem('axiom_sync_profile');
+      }
+    } catch (e) {
+      console.error("Axiom Discovery: Profile fetch failure", e);
+    }
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setAccessToken(null);
+    setUserInfo(null);
+    localStorage.removeItem('axiom_sync_token');
+    localStorage.removeItem('axiom_sync_profile');
+    localStorage.removeItem(SYNC_TOKEN_TS_KEY);
+  }, []);
+
+  const loginWithGoogle = useCallback(() => {
+    try {
+      if (typeof google !== 'undefined' && google.accounts?.oauth2) {
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        if (!clientId || clientId.includes("placeholder")) {
+          alert("Configuration Missing: GOOGLE_CLIENT_ID environment variable is not set.");
+          return;
+        }
+
+        const client = google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+          callback: (response: any) => {
+            if (response.access_token) {
+              const token = response.access_token;
+              setAccessToken(token);
+              localStorage.setItem('axiom_sync_token', token);
+              localStorage.setItem(SYNC_TOKEN_TS_KEY, Date.now().toString());
+              fetchUserInfo(token);
+            }
+          }
+        });
+        client.requestAccessToken();
+      }
+    } catch (e: any) {
+      console.error("Auth Failure", e);
+    }
+  }, [fetchUserInfo]);
 
   const performSync = useCallback(async (token: string, currentEntries: WorkoutEntry[], currentPlans: WorkoutPlan[]) => {
     if (!hasImported) return;
@@ -210,18 +368,16 @@ const App: React.FC = () => {
         setTimeout(() => setSyncStatus('idle'), 2000);
       } else {
         if (response.status === 401) {
-          setAccessToken(null);
-          localStorage.removeItem('axiom_sync_token');
-          localStorage.removeItem(SYNC_TOKEN_TS_KEY);
+          handleLogout();
         }
         setSyncStatus('error');
       }
     } catch (e) {
       setSyncStatus('error');
     }
-  }, [hasImported]);
+  }, [hasImported, handleLogout]);
 
-  const loadLatestSync = useCallback(async (token: string) => {
+  const loadLatestSync = useCallback(async (token: string, force: boolean = false) => {
     setSyncStatus('loading');
     try {
       const q_folder = encodeURIComponent("name = 'Axiom' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
@@ -245,7 +401,7 @@ const App: React.FC = () => {
 
       if (latestFile) {
         const driveTs = new Date(latestFile.createdTime).getTime();
-        if (driveTs > lastSyncTs) {
+        if (force || driveTs > lastSyncTs) {
           const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${latestFile.id}?alt=media`, {
             headers: { Authorization: `Bearer ${token}` },
           });
@@ -262,6 +418,9 @@ const App: React.FC = () => {
             setSyncStatus('success');
             setHasImported(true);
             setTimeout(() => setSyncStatus('idle'), 2000);
+          } else {
+            setHasImported(true);
+            setSyncStatus('idle');
           }
         } else {
           setSyncStatus('idle');
@@ -273,6 +432,7 @@ const App: React.FC = () => {
       }
     } catch (e) {
       setSyncStatus('error');
+      setHasImported(true); // Allow local operation if import fails
     }
   }, [lastSyncTs]);
 
@@ -288,19 +448,20 @@ const App: React.FC = () => {
 
     if (accessToken) {
       loadLatestSync(accessToken);
+      if (!userInfo) fetchUserInfo(accessToken);
     } else {
       setSyncNotice(true);
       setHasImported(true);
     }
-  }, [accessToken, loadLatestSync]);
+  }, [accessToken, loadLatestSync, userInfo, fetchUserInfo]);
 
   useEffect(() => {
-    let syncTimer: number | null = null;
+    let syncNoticeTimer: number | null = null;
     if (syncNotice && !accessToken) {
-      syncTimer = window.setTimeout(() => setSyncNotice(false), 10000);
+      syncNoticeTimer = window.setTimeout(() => setSyncNotice(false), 10000);
     }
     return () => {
-      if (syncTimer) window.clearTimeout(syncTimer);
+      if (syncNoticeTimer) window.clearTimeout(syncNoticeTimer);
     };
   }, [syncNotice, accessToken]);
 
@@ -588,76 +749,6 @@ const App: React.FC = () => {
     </>
   );
 
-  const StatusIndicator = () => {
-    const lastSyncStr = useMemo(() => {
-      if (!lastSyncTs) return 'Never';
-      try {
-        return formatDistanceToNow(lastSyncTs, { addSuffix: true });
-      } catch (e) {
-        return 'Recently';
-      }
-    }, [lastSyncTs, now]);
-
-    let label = 'Offline';
-    let dotColor = 'bg-neutral-600';
-    let Icon = CloudOff;
-    let bgColor = 'bg-neutral-900/40';
-    let textColor = 'text-neutral-500';
-
-    if (accessToken) {
-      label = 'Linked';
-      dotColor = 'bg-emerald-500';
-      Icon = Cloud;
-      textColor = 'text-neutral-400';
-
-      if (syncStatus === 'syncing') {
-        label = 'Syncing';
-        dotColor = 'bg-blue-500';
-        Icon = RefreshCw;
-      } else if (syncStatus === 'loading') {
-        label = 'Importing';
-        dotColor = 'bg-amber-500';
-        Icon = RefreshCw;
-      } else if (syncStatus === 'success') {
-        label = 'Success';
-        dotColor = 'bg-emerald-400';
-        Icon = CheckCircle2;
-        bgColor = 'bg-emerald-500/5';
-        textColor = 'text-emerald-400/80';
-      }
-    }
-
-    const handleStatusClick = () => {
-      if (accessToken) {
-        performSync(accessToken, entries, plans);
-      } else {
-        changeView('discovery');
-      }
-    };
-
-    const isSpinning = syncStatus === 'syncing' || syncStatus === 'loading';
-
-    return (
-      <button 
-        onClick={handleStatusClick}
-        className={`flex items-center gap-3 px-3 py-1.5 ${bgColor} border border-neutral-800 rounded-lg hover:border-neutral-600 transition-all group overflow-hidden relative max-w-[140px] sm:max-w-none`}
-      >
-        <div className="flex items-center gap-2">
-          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${isSpinning ? 'animate-pulse' : ''}`} />
-          <div className="flex flex-col items-start leading-none text-left">
-            <span className={`text-[10px] font-mono font-bold uppercase tracking-tighter whitespace-nowrap ${textColor}`}>{label}</span>
-            {accessToken && (
-              <span className="text-[7px] font-mono text-neutral-600 uppercase tracking-tighter mt-0.5 group-hover:text-neutral-400 transition-colors">
-                Last: {lastSyncStr}
-              </span>
-            )}
-          </div>
-        </div>
-        <Icon size={12} className={`text-neutral-500 shrink-0 ${isSpinning ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} />
-      </button>
-    );
-  };
-
   return (
     <div 
       className="min-h-screen bg-[#121212] text-neutral-200 flex flex-col font-sans pb-20 sm:pb-0 select-none overflow-x-hidden"
@@ -680,7 +771,16 @@ const App: React.FC = () => {
               <button onClick={() => setDashboardWeekOffset(0)} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500 text-black rounded-lg font-mono text-[9px] font-bold uppercase tracking-tight shadow-lg animate-in fade-in zoom-in-95">
                 <RotateCcw size={12} /><span>Return to Current</span>
               </button>
-            ) : <StatusIndicator />}
+            ) : (
+              <StatusIndicator 
+                accessToken={accessToken} 
+                syncStatus={syncStatus} 
+                lastSyncTs={lastSyncTs} 
+                now={now} 
+                onSync={() => accessToken && performSync(accessToken, entries, plans)}
+                onNavigateToDiscovery={() => changeView('discovery')}
+              />
+            )}
           </div>
         </div>
       </header>
@@ -749,7 +849,19 @@ const App: React.FC = () => {
             />
           )}
           {view === 'history' && <History entries={entries} plans={plans} onEditEntry={handleEditEntry} />}
-          {view === 'discovery' && <DiscoveryPanel entries={entries} plans={plans} onUpdateEntries={setEntries} onUpdatePlans={setPlans} externalSyncStatus={syncStatus} onManualSync={() => accessToken && performSync(accessToken, entries, plans)} />}
+          {view === 'discovery' && (
+            <DiscoveryPanel 
+              entries={entries} 
+              plans={plans} 
+              accessToken={accessToken}
+              userInfo={userInfo}
+              onLogin={loginWithGoogle}
+              onLogout={handleLogout}
+              syncStatus={syncStatus}
+              onManualSync={() => accessToken && performSync(accessToken, entries, plans)} 
+              onManualImport={() => accessToken && loadLatestSync(accessToken, true)}
+            />
+          )}
         </div>
       </main>
 
@@ -798,7 +910,7 @@ const App: React.FC = () => {
       {isLogModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeLogModal} />
-          <div className="relative bg-[#1a1a1a] border border-neutral-800 w-full max-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative bg-[#1a1a1a] border border-neutral-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <LogAction 
               entries={entries} 
               plans={plans} 
