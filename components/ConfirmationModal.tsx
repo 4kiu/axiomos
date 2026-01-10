@@ -1,5 +1,5 @@
-
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, X } from 'lucide-react';
 
 interface ConfirmationModalProps {
@@ -25,7 +25,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 
   const accentColor = variant === 'danger' ? 'rose' : 'amber';
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
       <div 
         className="absolute inset-0 bg-black/90 backdrop-blur-md animate-in fade-in duration-200" 
@@ -69,7 +69,8 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
