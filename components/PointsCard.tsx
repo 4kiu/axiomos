@@ -105,7 +105,7 @@ const PointsCard: React.FC<PointsCardProps> = ({ entries, weekStart }) => {
             <Star size={14} className="text-amber-500" />
             Performance Allocation
           </h3>
-          <div className="text-[10px] font-mono text-neutral-600">v1.8_XP_MATRIX</div>
+          <div className="text-[10px] font-mono text-neutral-600">v2_XP_MATRIX</div>
         </div>
 
         <div className="flex items-baseline gap-2">

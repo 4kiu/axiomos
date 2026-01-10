@@ -284,32 +284,36 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans)); }, [plans]);
 
   useEffect(() => {
-    if (!window.history.state) window.history.replaceState({ view, isSubPage: false }, '');
+    if (!window.history.state) window.history.replaceState({ view, isSubPage: false, isLogOpen: false }, '');
     const handlePopState = (event: PopStateEvent) => {
       const state = event.state;
       if (state) {
         setView(state.view);
         setIsPlanEditing(state.isSubPage || false);
+        setIsLogModalOpen(state.isLogOpen || false);
         if (!state.isSubPage) setEditingPlanId(null);
         setExitWarning(false);
       } else {
-        if (view === 'current' && !isPlanEditing) handleExitSequence();
-        else if (isPlanEditing) {
+        if (view === 'current' && !isPlanEditing && !isLogModalOpen) handleExitSequence();
+        else if (isLogModalOpen) {
+          setIsLogModalOpen(false);
+          window.history.replaceState({ view, isSubPage: isPlanEditing, isLogOpen: false }, '');
+        } else if (isPlanEditing) {
           setIsPlanEditing(false);
           setEditingPlanId(null);
-          window.history.replaceState({ view, isSubPage: false }, '');
+          window.history.replaceState({ view, isSubPage: false, isLogOpen: false }, '');
         } else changeView('current');
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [view, isPlanEditing]);
+  }, [view, isPlanEditing, isLogModalOpen]);
 
   const handleExitSequence = () => {
     if (exitWarning) window.history.back();
     else {
       setExitWarning(true);
-      window.history.pushState({ view: 'current', isSubPage: false }, '');
+      window.history.pushState({ view: 'current', isSubPage: false, isLogOpen: false }, '');
       if (exitTimerRef.current) window.clearTimeout(exitTimerRef.current);
       exitTimerRef.current = window.setTimeout(() => setExitWarning(false), 3000) as unknown as number;
     }
@@ -333,18 +337,31 @@ const App: React.FC = () => {
     setView(newView);
     setIsPlanEditing(false);
     setEditingPlanId(null);
-    window.history.pushState({ view: newView, isSubPage: false }, '');
+    setIsLogModalOpen(false);
+    window.history.pushState({ view: newView, isSubPage: false, isLogOpen: false }, '');
     localStorage.setItem(VIEW_STORAGE_KEY, newView);
   };
 
   const handlePlanEditorOpen = (planId: string | null) => {
     setIsPlanEditing(true);
     setEditingPlanId(planId);
-    window.history.pushState({ view: 'plans', isSubPage: true }, '');
+    window.history.pushState({ view: 'plans', isSubPage: true, isLogOpen: false }, '');
   };
 
   const handlePlanEditorClose = () => { 
     if (isPlanEditing) changeView(view); 
+  };
+
+  const handleOpenLogModal = (data: { date?: Date, identity?: IdentityState, editingEntry?: WorkoutEntry, initialPlanId?: string } | null = null) => {
+    setPreselectedLogData(data);
+    setIsLogModalOpen(true);
+    window.history.pushState({ view, isSubPage: isPlanEditing, isLogOpen: true }, '');
+  };
+
+  const handleCloseLogModal = () => {
+    if (isLogModalOpen) {
+      window.history.back();
+    }
   };
 
   useEffect(() => {
@@ -444,8 +461,7 @@ const App: React.FC = () => {
   const addOrUpdateEntry = (entryData: Omit<WorkoutEntry, 'id'>, id?: string) => {
     if (id) setEntries(prev => prev.map(e => e.id === id ? { ...entryData, id } : e));
     else setEntries(prev => [...prev, { ...entryData, id: crypto.randomUUID() }]);
-    setIsLogModalOpen(false);
-    setPreselectedLogData(null);
+    handleCloseLogModal();
   };
 
   const deleteEntry = (id: string) => {
@@ -464,21 +480,18 @@ const App: React.FC = () => {
     const existingToday = entries.find(e => isSameDay(new Date(e.timestamp), today));
     if (existingToday) setEntries(prev => prev.map(e => e.id === existingToday.id ? { ...e, planId } : e));
     else {
-      setPreselectedLogData({ date: today, identity: IdentityState.NORMAL, initialPlanId: planId });
-      setIsLogModalOpen(true);
+      handleOpenLogModal({ date: today, identity: IdentityState.NORMAL, initialPlanId: planId });
     }
   };
 
   const handleCellClick = (date: Date, identity: IdentityState) => {
-    setPreselectedLogData({ date, identity });
-    setIsLogModalOpen(true);
+    handleOpenLogModal({ date, identity });
   };
 
   const handleEditEntry = (id: string) => {
     const entry = entries.find(e => e.id === id);
     if (entry) {
-      setPreselectedLogData({ editingEntry: entry });
-      setIsLogModalOpen(true);
+      handleOpenLogModal({ editingEntry: entry });
     }
   };
 
@@ -538,7 +551,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <AxiomLogo className="w-8 h-8" />
             <div className="flex flex-col">
-              <h1 className="text-lg font-mono font-bold tracking-tight uppercase leading-none text-white">Axiom v1.8</h1>
+              <h1 className="text-lg font-mono font-bold tracking-tight uppercase leading-none text-white">Axiom v2</h1>
               <span className="text-[9px] text-neutral-500 font-mono uppercase tracking-tighter">Personal Intelligence OS</span>
             </div>
           </div>
@@ -601,7 +614,7 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatusPanel entries={entries} onAction={() => setIsLogModalOpen(true)} />
+                <StatusPanel entries={entries} onAction={() => handleOpenLogModal()} />
                 <PointsCard entries={entries} weekStart={dashboardWeekStart} />
                 <div className="bg-[#1a1a1a] border border-neutral-800 rounded-xl p-6 flex flex-col justify-between">
                   <div>
@@ -611,7 +624,7 @@ const App: React.FC = () => {
                       <li className="flex gap-2"><Zap size={14} className="text-violet-500 shrink-0" /><span>Streaks are sustained by any logged activity except Survival states.</span></li>
                     </ul>
                   </div>
-                  <button onClick={() => todayHasEntry ? handleEditEntry(todayEntry!.id) : setIsLogModalOpen(true)} className="mt-6 w-full py-3 bg-neutral-100 hover:bg-white text-black font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
+                  <button onClick={() => todayHasEntry ? handleEditEntry(todayEntry!.id) : handleOpenLogModal()} className="mt-6 w-full py-3 bg-neutral-100 hover:bg-white text-black font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
                     {todayHasEntry ? <Edit3 size={20} /> : <Plus size={20} />}
                     <span>{todayHasEntry ? 'Modify Identity' : 'Log Session'}</span>
                   </button>
@@ -658,14 +671,14 @@ const App: React.FC = () => {
 
       {isLogModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => { setIsLogModalOpen(false); setPreselectedLogData(null); }} />
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={handleCloseLogModal} />
           <div className="relative bg-[#1a1a1a] border border-neutral-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <LogAction 
               entries={entries} 
               plans={plans} 
               onSave={addOrUpdateEntry} 
               onDelete={deleteEntry} 
-              onCancel={() => { setIsLogModalOpen(false); setPreselectedLogData(null); }} 
+              onCancel={handleCloseLogModal} 
               initialDate={preselectedLogData?.date} 
               initialIdentity={preselectedLogData?.identity} 
               editingEntry={preselectedLogData?.editingEntry} 
@@ -726,7 +739,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex gap-4">
           <span className={syncStatus !== 'idle' ? 'animate-pulse text-emerald-500' : ''}> {syncStatus !== 'idle' ? 'SYNC_ACTIVE' : 'IDENTITY_STABLE: OK'} </span>
-          <span>SYSTEM_VERSION: ALPHA_v1.8</span>
+          <span>SYSTEM_VERSION: ALPHA_v2</span>
         </div>
       </footer>
     </div>

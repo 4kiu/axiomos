@@ -126,7 +126,7 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ entries, onAction }) => {
               <Activity size={14} className={integrityScore > 40 ? 'text-emerald-500' : 'text-rose-500'} />
               System Integrity
             </h3>
-            <div className="text-[9px] font-mono text-neutral-600 mt-1 uppercase">Diagnostics: v1.8_STABLE</div>
+            <div className="text-[9px] font-mono text-neutral-600 mt-1 uppercase">Diagnostics: v2_STABLE</div>
           </div>
           <div className={`px-3 py-1 rounded-md border font-mono text-xs font-bold transition-colors ${healthBg} ${healthColor} border-current/20`}>
             {integrityScore}%
