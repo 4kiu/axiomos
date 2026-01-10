@@ -317,7 +317,10 @@ const App: React.FC = () => {
   const changeView = (newView: ViewType, force = false) => {
     if (newView === view && !isPlanEditing) return;
 
-    if (!force && isDirty && newView !== view) {
+    const isClosingEditor = newView === view && isPlanEditing;
+    const isChangingView = newView !== view;
+
+    if (!force && isDirty && (isChangingView || isClosingEditor)) {
       setPendingView(newView);
       return;
     }
@@ -339,7 +342,9 @@ const App: React.FC = () => {
     window.history.pushState({ view: 'plans', isSubPage: true }, '');
   };
 
-  const handlePlanEditorClose = () => { if (isPlanEditing) window.history.back(); };
+  const handlePlanEditorClose = () => { 
+    if (isPlanEditing) changeView(view); 
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -358,19 +363,21 @@ const App: React.FC = () => {
 
   // Grid level swipe handlers (Week switching)
   const handleTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation(); // Priority: Prevent page swipe from triggering when interacting with table
     touchStartX.current = e.targetTouches[0].clientX;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    e.stopPropagation(); // Priority: Prevent page swipe from tracking when interacting with table
     touchEndX.current = e.targetTouches[0].clientX;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation(); // Priority: Prevent page swipe from ending when interacting with table
     if (!touchStartX.current || !touchEndX.current) return;
     const distance = touchStartX.current - touchEndX.current;
     
     if (Math.abs(distance) > 50) {
-      e.stopPropagation(); // Priority: Stop bubbling so page swipe doesn't trigger
       if (distance > 50) setDashboardWeekOffset(prev => prev + 1);
       else if (distance < -50) setDashboardWeekOffset(prev => prev - 1);
     }
@@ -393,7 +400,7 @@ const App: React.FC = () => {
   const handlePageTouchEnd = () => {
     if (!pageTouchStartX.current || !pageTouchEndX.current) return;
     const distance = pageTouchStartX.current - pageTouchEndX.current;
-    const threshold = 100; // Require more intentional movement for page switching
+    const threshold = 50; // Reduced from 100 for higher sensitivity
 
     if (Math.abs(distance) > threshold) {
       const currentIndex = VIEW_ORDER.indexOf(view);

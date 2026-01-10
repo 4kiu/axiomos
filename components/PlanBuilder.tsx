@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { WorkoutPlan, Exercise } from '../types';
 import ConfirmationModal from './ConfirmationModal.tsx';
@@ -316,7 +317,6 @@ const PlanBuilder: React.FC<PlanBuilderProps> = ({
           <div className="flex-1 max-w-xl flex items-center gap-4">
             <button 
               onClick={() => { 
-                onDirtyChange?.(false);
                 if (onCloseEditor) onCloseEditor(); 
                 else { setIsCreating(false); setEditingPlanId(null); setInputStates({}); initialPlanRef.current = null; } 
               }} 
