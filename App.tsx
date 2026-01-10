@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { IdentityState, WorkoutEntry, IDENTITY_METADATA, WorkoutPlan } from './types.ts';
 import WeeklyGrid from './components/WeeklyGrid.tsx';
 import LogAction from './components/LogAction.tsx';
@@ -33,7 +33,7 @@ import {
   Trash2,
   AlertCircle
 } from 'lucide-react';
-import { format, addWeeks, addDays, isSameDay } from 'date-fns';
+import { format, addWeeks, addDays, isSameDay, formatDistanceToNow } from 'date-fns';
 
 const STORAGE_KEY = 'axiom_os_data_v1';
 const PLANS_STORAGE_KEY = 'axiom_os_plans_v1';
@@ -90,7 +90,6 @@ const App: React.FC = () => {
   const [isPlanEditing, setIsPlanEditing] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   
-  // Track dirty state with both React state (for UI) and a Ref (for stable event listener checks)
   const [isPlanDirty, _setIsPlanDirty] = useState(false);
   const isPlanDirtyRef = useRef(false);
   const setIsPlanDirty = useCallback((val: boolean) => {
@@ -135,9 +134,15 @@ const App: React.FC = () => {
   });
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'loading' | 'success' | 'error'>('idle');
   
-  const isInitialMount = useRef(true);
   const syncTimeoutRef = useRef<number | null>(null);
-  const lastKnownSyncTs = useRef<number>(Number(localStorage.getItem(LAST_SYNC_TS_KEY) || 0));
+  const [lastSyncTs, setLastSyncTs] = useState<number>(Number(localStorage.getItem(LAST_SYNC_TS_KEY) || 0));
+  const [now, setNow] = useState(Date.now());
+  const lastKnownStateRef = useRef<string>('');
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const performSync = useCallback(async (token: string, currentEntries: WorkoutEntry[], currentPlans: WorkoutPlan[]) => {
     if (!hasImported) return;
@@ -177,10 +182,11 @@ const App: React.FC = () => {
       });
 
       if (response.ok) {
+        lastKnownStateRef.current = JSON.stringify({ entries: currentEntries, plans: currentPlans });
         setSyncStatus('success');
-        lastKnownSyncTs.current = ts;
+        setLastSyncTs(ts);
         localStorage.setItem(LAST_SYNC_TS_KEY, ts.toString());
-        localStorage.setItem(SYNC_TOKEN_TS_KEY, ts.toString()); // Refresh session activity
+        localStorage.setItem(SYNC_TOKEN_TS_KEY, ts.toString());
 
         try {
           const q_cleanup = encodeURIComponent(`'${folderId}' in parents and name contains "sync." and trashed = false`);
@@ -239,16 +245,20 @@ const App: React.FC = () => {
 
       if (latestFile) {
         const driveTs = new Date(latestFile.createdTime).getTime();
-        if (driveTs > lastKnownSyncTs.current) {
+        if (driveTs > lastSyncTs) {
           const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${latestFile.id}?alt=media`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           const manifest = await fileResponse.json();
           if (manifest.data) {
-            if (manifest.data.entries) setEntries(manifest.data.entries);
-            if (manifest.data.plans) setPlans(manifest.data.plans);
-            lastKnownSyncTs.current = manifest.timestamp || driveTs;
-            localStorage.setItem(LAST_SYNC_TS_KEY, lastKnownSyncTs.current.toString());
+            const newEntries = manifest.data.entries || [];
+            const newPlans = manifest.data.plans || [];
+            setEntries(newEntries);
+            setPlans(newPlans);
+            lastKnownStateRef.current = JSON.stringify({ entries: newEntries, plans: newPlans });
+            const ts = manifest.timestamp || driveTs;
+            setLastSyncTs(ts);
+            localStorage.setItem(LAST_SYNC_TS_KEY, ts.toString());
             setSyncStatus('success');
             setHasImported(true);
             setTimeout(() => setSyncStatus('idle'), 2000);
@@ -264,18 +274,23 @@ const App: React.FC = () => {
     } catch (e) {
       setSyncStatus('error');
     }
-  }, []);
+  }, [lastSyncTs]);
 
   useEffect(() => {
-    const savedEntries = localStorage.getItem(STORAGE_KEY);
-    const savedPlans = localStorage.getItem(PLANS_STORAGE_KEY);
-    if (savedEntries) try { setEntries(JSON.parse(savedEntries)); } catch (e) {}
-    if (savedPlans) try { setPlans(JSON.parse(savedPlans)); } catch (e) {}
+    const savedEntriesStr = localStorage.getItem(STORAGE_KEY);
+    const savedPlansStr = localStorage.getItem(PLANS_STORAGE_KEY);
+    const initialEntries = savedEntriesStr ? JSON.parse(savedEntriesStr) : [];
+    const initialPlans = savedPlansStr ? JSON.parse(savedPlansStr) : [];
+    
+    setEntries(initialEntries);
+    setPlans(initialPlans);
+    lastKnownStateRef.current = JSON.stringify({ entries: initialEntries, plans: initialPlans });
 
     if (accessToken) {
       loadLatestSync(accessToken);
     } else {
       setSyncNotice(true);
+      setHasImported(true);
     }
   }, [accessToken, loadLatestSync]);
 
@@ -290,14 +305,15 @@ const App: React.FC = () => {
   }, [syncNotice, accessToken]);
 
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-    } else if (accessToken && hasImported) {
-      if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
-      syncTimeoutRef.current = window.setTimeout(() => {
-        performSync(accessToken, entries, plans);
-      }, 3000) as unknown as number;
-    }
+    if (!hasImported || !accessToken) return;
+
+    const currentState = JSON.stringify({ entries, plans });
+    if (currentState === lastKnownStateRef.current) return;
+
+    if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = window.setTimeout(() => {
+      performSync(accessToken, entries, plans);
+    }, 3000) as unknown as number;
 
     return () => {
       if (syncTimeoutRef.current) window.clearTimeout(syncTimeoutRef.current);
@@ -307,11 +323,8 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }, [entries]);
   useEffect(() => { localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans)); }, [plans]);
 
-  // Handle the navigation exit warning (double back to exit)
   const handleExitSequence = useCallback(() => {
-    if (exitWarning) {
-      return;
-    }
+    if (exitWarning) return;
     setExitWarning(true);
     if (exitTimerRef.current) window.clearTimeout(exitTimerRef.current);
     exitTimerRef.current = window.setTimeout(() => {
@@ -576,21 +589,72 @@ const App: React.FC = () => {
   );
 
   const StatusIndicator = () => {
-    let statusText = accessToken ? 'Linked' : 'Offline';
-    let dotColor = accessToken ? 'bg-emerald-500' : 'bg-neutral-600';
-    let Icon = accessToken ? Cloud : CloudOff;
-    
-    if (syncStatus === 'loading') { statusText = 'Importing...'; dotColor = 'bg-amber-500'; Icon = RefreshCw; }
-    else if (syncStatus === 'syncing') { statusText = 'Syncing...'; dotColor = 'bg-blue-500'; Icon = RefreshCw; }
-    else if (syncStatus === 'success' && accessToken) { statusText = 'Success'; Icon = CheckCircle2; }
-    else if (syncStatus === 'error') { statusText = 'Auth Error'; dotColor = 'bg-rose-500'; Icon = AlertTriangle; }
+    const lastSyncStr = useMemo(() => {
+      if (!lastSyncTs) return 'Never';
+      try {
+        return formatDistanceToNow(lastSyncTs, { addSuffix: true });
+      } catch (e) {
+        return 'Recently';
+      }
+    }, [lastSyncTs, now]);
+
+    let label = 'Offline';
+    let dotColor = 'bg-neutral-600';
+    let Icon = CloudOff;
+    let bgColor = 'bg-neutral-900/40';
+    let textColor = 'text-neutral-500';
+
+    if (accessToken) {
+      label = 'Linked';
+      dotColor = 'bg-emerald-500';
+      Icon = Cloud;
+      textColor = 'text-neutral-400';
+
+      if (syncStatus === 'syncing') {
+        label = 'Syncing';
+        dotColor = 'bg-blue-500';
+        Icon = RefreshCw;
+      } else if (syncStatus === 'loading') {
+        label = 'Importing';
+        dotColor = 'bg-amber-500';
+        Icon = RefreshCw;
+      } else if (syncStatus === 'success') {
+        label = 'Success';
+        dotColor = 'bg-emerald-400';
+        Icon = CheckCircle2;
+        bgColor = 'bg-emerald-500/5';
+        textColor = 'text-emerald-400/80';
+      }
+    }
+
+    const handleStatusClick = () => {
+      if (accessToken) {
+        performSync(accessToken, entries, plans);
+      } else {
+        changeView('discovery');
+      }
+    };
+
+    const isSpinning = syncStatus === 'syncing' || syncStatus === 'loading';
 
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/40 border border-neutral-800 rounded-lg">
-        <div className={`w-1.5 h-1.5 rounded-full ${dotColor} ${syncStatus !== 'idle' ? 'animate-pulse' : ''}`} />
-        <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-tighter whitespace-nowrap">{statusText}</span>
-        <Icon size={12} className={`text-neutral-500 ${syncStatus !== 'idle' && syncStatus !== 'success' && syncStatus !== 'error' ? 'animate-spin' : ''}`} />
-      </div>
+      <button 
+        onClick={handleStatusClick}
+        className={`flex items-center gap-3 px-3 py-1.5 ${bgColor} border border-neutral-800 rounded-lg hover:border-neutral-600 transition-all group overflow-hidden relative max-w-[140px] sm:max-w-none`}
+      >
+        <div className="flex items-center gap-2">
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${isSpinning ? 'animate-pulse' : ''}`} />
+          <div className="flex flex-col items-start leading-none text-left">
+            <span className={`text-[10px] font-mono font-bold uppercase tracking-tighter whitespace-nowrap ${textColor}`}>{label}</span>
+            {accessToken && (
+              <span className="text-[7px] font-mono text-neutral-600 uppercase tracking-tighter mt-0.5 group-hover:text-neutral-400 transition-colors">
+                Last: {lastSyncStr}
+              </span>
+            )}
+          </div>
+        </div>
+        <Icon size={12} className={`text-neutral-500 shrink-0 ${isSpinning ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} />
+      </button>
     );
   };
 
@@ -700,7 +764,6 @@ const App: React.FC = () => {
         <ArrowUp size={24} className="group-hover:-translate-y-0.5 transition-transform" />
       </button>
 
-      {/* Confirmation Modal */}
       {confirmModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setConfirmModal(null)} />
@@ -735,7 +798,7 @@ const App: React.FC = () => {
       {isLogModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeLogModal} />
-          <div className="relative bg-[#1a1a1a] border border-neutral-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative bg-[#1a1a1a] border border-neutral-800 w-full max-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <LogAction 
               entries={entries} 
               plans={plans} 
