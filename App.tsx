@@ -119,15 +119,23 @@ const App: React.FC = () => {
   const isSyncInProgress = useRef(false);
   const syncQueued = useRef(false);
 
+  // Use a ref to always have access to the absolute latest data during sync cycles
+  const latestDataRef = useRef({ entries, plans });
+  useEffect(() => {
+    latestDataRef.current = { entries, plans };
+  }, [entries, plans]);
+
   const [isDirty, setIsDirty] = useState(false);
   const [pendingView, setPendingView] = useState<ViewType | null>(null);
 
-  const performSync = useCallback(async (token: string, currentEntries: WorkoutEntry[], currentPlans: WorkoutPlan[]) => {
+  const performSync = useCallback(async (token: string) => {
     if (!hasImported) return;
     if (isSyncInProgress.current) {
       syncQueued.current = true;
       return;
     }
+
+    const { entries: currentEntries, plans: currentPlans } = latestDataRef.current;
 
     isSyncInProgress.current = true;
     setSyncStatus('syncing');
@@ -204,8 +212,8 @@ const App: React.FC = () => {
       isSyncInProgress.current = false;
       if (syncQueued.current) {
         syncQueued.current = false;
-        // If a sync was queued during execution, trigger it again to catch up
-        performSync(token, currentEntries, currentPlans);
+        // Re-trigger sync to catch up with any changes made while the previous sync was running
+        performSync(token);
       }
     }
   }, [hasImported]);
@@ -301,8 +309,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (accessToken && hasImported) {
       const timeoutId = setTimeout(() => {
-        performSync(accessToken, entries, plans);
-      }, 1500); // Debounce to prevent excessive API calls
+        performSync(accessToken);
+      }, 1000); // Debounce reduced to 1s for better catch-up responsiveness
       return () => clearTimeout(timeoutId);
     }
   }, [entries, plans, accessToken, hasImported, performSync]);
@@ -691,7 +699,7 @@ const App: React.FC = () => {
               onUpdateEntries={setEntries} 
               onUpdatePlans={setPlans} 
               externalSyncStatus={syncStatus}
-              onManualSync={() => accessToken && performSync(accessToken, entries, plans)}
+              onManualSync={() => accessToken && performSync(accessToken)}
             />
           )}
         </div>

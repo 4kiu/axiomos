@@ -186,18 +186,24 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
     }
     setLoading(true);
     try {
-      // Corrected: Initializing GoogleGenAI client with environment variable API key.
+      // Initializing GoogleGenAI client with environment variable API key.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const prompt = `Act as an elite sports scientist. Analyze these training logs for patterns, fatigue accumulation, and identity state transitions. Provide a concise executive summary. Data: ${JSON.stringify(entries.slice(-15))}`;
-      // Corrected: Always use ai.models.generateContent with model name and prompt.
+      // Always use ai.models.generateContent with model name and prompt.
       const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt });
-      // Corrected: Use response.text property directly, do not call as a method.
+      // Use response.text property directly, do not call as a method.
       setAnalysis(response.text || "No insights found.");
     } catch (error) {
       setAnalysis("Discovery engine failure.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const getSyncDisplayText = () => {
+    if (externalSyncStatus === 'importing') return 'IMPORTING...';
+    if (externalSyncStatus === 'syncing') return 'SYNCING...';
+    return customSyncName;
   };
 
   return (
@@ -279,9 +285,9 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
 
             <div className="space-y-2">
               <label className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest block">Manifest Trace</label>
-              <div className="bg-black/40 border border-neutral-800 rounded-lg p-3 text-[10px] font-mono text-neutral-500 flex items-center gap-2">
+              <div className={`bg-black/40 border rounded-lg p-3 text-[10px] font-mono flex items-center gap-2 transition-colors ${externalSyncStatus === 'importing' || externalSyncStatus === 'syncing' ? 'border-emerald-500/50 text-emerald-400' : 'border-neutral-800 text-neutral-500'}`}>
                 <RefreshCw size={12} className={externalSyncStatus !== 'idle' && externalSyncStatus !== 'success' && externalSyncStatus !== 'error' ? 'animate-spin text-emerald-500' : ''} />
-                <span className="truncate">{customSyncName}</span>
+                <span className="truncate font-bold tracking-tight">{getSyncDisplayText()}</span>
               </div>
             </div>
 
