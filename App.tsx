@@ -109,7 +109,6 @@ const App: React.FC = () => {
   const pageTouchStartX = useRef<number | null>(null);
   const pageTouchStartY = useRef<number | null>(null);
   const pageTouchEndX = useRef<number | null>(null);
-  // Fix: Added 'const' to correctly declare isSwipePrevented as a ref within the component scope.
   const isSwipePrevented = useRef<boolean>(false);
 
   const [hasImported, setHasImported] = useState(false);
@@ -247,6 +246,7 @@ const App: React.FC = () => {
       }
     } catch (e) {
       setSyncStatus('error');
+      setHasImported(true); // Ensure continuity of local usage even if cloud fails
     }
   }, []);
 
@@ -273,6 +273,7 @@ const App: React.FC = () => {
     if (accessToken) {
       loadLatestSync(accessToken);
     } else {
+      setHasImported(true); // Allow sync if user links later
       setSyncNotice(true);
       const timer = setTimeout(() => setSyncNotice(false), 10000);
       return () => clearTimeout(timer);
@@ -281,6 +282,16 @@ const App: React.FC = () => {
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }, [entries]);
   useEffect(() => { localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans)); }, [plans]);
+
+  // AUTO-SYNC ON CHANGES: Push to cloud whenever entries or plans change
+  useEffect(() => {
+    if (accessToken && hasImported && syncStatus === 'idle') {
+      const timeoutId = setTimeout(() => {
+        performSync(accessToken, entries, plans);
+      }, 1500); // Debounce to prevent excessive API calls
+      return () => clearTimeout(timeoutId);
+    }
+  }, [entries, plans, accessToken, hasImported, performSync]);
 
   useEffect(() => {
     if (!window.history.state) window.history.replaceState({ view, isSubPage: false, isLogOpen: false }, '');
