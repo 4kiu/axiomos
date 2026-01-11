@@ -34,8 +34,7 @@ interface DiscoveryPanelProps {
   plans: WorkoutPlan[];
   onUpdateEntries: (entries: WorkoutEntry[]) => void;
   onUpdatePlans: (plans: WorkoutPlan[]) => void;
-  // Added 'importing' status to match App.tsx syncStatus literals
-  externalSyncStatus?: 'idle' | 'syncing' | 'loading' | 'success' | 'error' | 'importing';
+  externalSyncStatus?: 'idle' | 'syncing' | 'loading' | 'success' | 'error';
   onManualSync?: () => void;
 }
 
@@ -186,12 +185,9 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
     }
     setLoading(true);
     try {
-      // Corrected: Initializing GoogleGenAI client with environment variable API key.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const prompt = `Act as an elite sports scientist. Analyze these training logs for patterns, fatigue accumulation, and identity state transitions. Provide a concise executive summary. Data: ${JSON.stringify(entries.slice(-15))}`;
-      // Corrected: Always use ai.models.generateContent with model name and prompt.
       const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt });
-      // Corrected: Use response.text property directly, do not call as a method.
       setAnalysis(response.text || "No insights found.");
     } catch (error) {
       setAnalysis("Discovery engine failure.");
@@ -280,7 +276,7 @@ const DiscoveryPanel: React.FC<DiscoveryPanelProps> = ({
             <div className="space-y-2">
               <label className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest block">Manifest Trace</label>
               <div className="bg-black/40 border border-neutral-800 rounded-lg p-3 text-[10px] font-mono text-neutral-500 flex items-center gap-2">
-                <RefreshCw size={12} className={externalSyncStatus !== 'idle' && externalSyncStatus !== 'success' && externalSyncStatus !== 'error' ? 'animate-spin text-emerald-500' : ''} />
+                <RefreshCw size={12} className={externalSyncStatus !== 'idle' ? 'animate-spin text-emerald-500' : ''} />
                 <span className="truncate">{customSyncName}</span>
               </div>
             </div>

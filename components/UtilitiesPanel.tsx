@@ -28,8 +28,7 @@ interface UtilitiesPanelProps {
   plans: WorkoutPlan[];
   onUpdateEntries: (entries: WorkoutEntry[]) => void;
   onUpdatePlans: (plans: WorkoutPlan[]) => void;
-  // Added 'importing' status to match App.tsx syncStatus literals
-  externalSyncStatus?: 'idle' | 'syncing' | 'loading' | 'success' | 'error' | 'importing';
+  externalSyncStatus?: 'idle' | 'syncing' | 'loading' | 'success' | 'error';
   onManualSync?: () => void;
 }
 
@@ -212,7 +211,7 @@ const UtilitiesPanel: React.FC<UtilitiesPanelProps> = ({
           <div className="space-y-2">
             <label className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest block">Manifest Trace</label>
             <div className="bg-black/40 border border-neutral-800 rounded-lg p-3 text-[10px] font-mono text-neutral-500 flex items-center gap-2">
-              <RefreshCw size={12} className={externalSyncStatus !== 'idle' && externalSyncStatus !== 'success' && externalSyncStatus !== 'error' ? 'animate-spin text-emerald-500' : ''} />
+              <RefreshCw size={12} className={externalSyncStatus !== 'idle' ? 'animate-spin text-emerald-500' : ''} />
               <span className="truncate">{customSyncName}</span>
             </div>
           </div>

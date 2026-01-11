@@ -18,9 +18,8 @@ export default defineConfig(({ mode }) => {
     base: './', // Ensures relative paths work on GitHub Pages
     define: {
       // Injects keys into the global scope as process.env variables
-      // Corrected: Removed hardcoded API key fallbacks.
-      'process.env.API_KEY': JSON.stringify(env.API_KEY),
-      'process.env.GOOGLE_CLIENT_ID': JSON.stringify(env.GOOGLE_CLIENT_ID),
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || 'AIzaSyD89H4Kv8F_wiP4aqb5cZgSgIKDOUzhz9w'),
+      'process.env.GOOGLE_CLIENT_ID': JSON.stringify(env.GOOGLE_CLIENT_ID || '156781395704-rqijcnbca23931svbuhc41sdqtoh5ghq.apps.googleusercontent.com'),
     },
     build: {
       outDir: 'dist',
